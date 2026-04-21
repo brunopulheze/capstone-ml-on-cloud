@@ -1,0 +1,16 @@
+# Requirements for the gold price prediction project
+pandas
+numpy
+matplotlib
+yfinance
+tensorflow
+scikit-learn
+h5py
+
+# MLOps / deployment extras
+mlflow
+fastapi
+uvicorn
+boto3
+joblib
+xgboost
