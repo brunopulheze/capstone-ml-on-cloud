@@ -1,7 +1,7 @@
 {
   "model_type": "gru",
-  "model_path": "c:\\Users\\User\\Desktop\\Ironhack-DS-AI\\capstone-ml-on-cloud\\models\\best_model.keras",
-  "rmse": 626.45,
+  "model_path": "c:\\Users\\bruno\\Desktop\\Ironhack\\labs\\capstone-ml-on-cloud\\models\\best_model.keras",
+  "rmse": 1901.2263926554024,
   "features": [
     "lag_1",
     "lag_2",

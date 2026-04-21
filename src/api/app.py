@@ -1,82 +1,145 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+"""
+BTC Price Predictor — FastAPI app (GRU model)
+
+POST /predict  {"prices": [<list of daily Close prices, oldest first>]}
+  → {"predicted_price": <float>, "previous_close": <float>}
+
+The `prices` list must contain at least SEQ_LEN + 200 values so that all
+technical indicators (RSI-14, MACD-26, rolling-std-30, 100-day lags) can
+be computed without NaN rows after the warmup period.
+"""
+from __future__ import annotations
+
+import json
 import os
+
 import joblib
 import numpy as np
-import json
+import pandas as pd
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
-app = FastAPI(title="BTC Price Predictor")
+app = FastAPI(title="BTC Price Predictor — GRU")
 
-MODEL_DIR = os.getenv('MODEL_DIR', os.path.join(os.getcwd(), 'models'))
-SELECTION_FILE = os.path.join(MODEL_DIR, 'selection.json')
+# ── Paths ─────────────────────────────────────────────────────────────
+MODEL_DIR      = os.getenv("MODEL_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "models"))
+SELECTION_FILE = os.path.join(MODEL_DIR, "selection.json")
 
-
-def load_models():
-    # Determine model type
-    model_type = os.getenv('MODEL_TYPE', None)
-    if not model_type and os.path.exists(SELECTION_FILE):
-        try:
-            with open(SELECTION_FILE) as f:
-                sel = json.load(f)
-                model_type = sel.get('model')
-        except Exception:
-            model_type = None
-
-    if not model_type:
-        raise RuntimeError('No model selected. Set MODEL_TYPE env or run choose_best_model.py')
-
-    model = None
-    scaler = None
-    if os.path.exists(os.path.join(MODEL_DIR, 'scaler.save')):
-        scaler = joblib.load(os.path.join(MODEL_DIR, 'scaler.save'))
-
-    if model_type.lower() in ('lstm', 'keras'):
-        import tensorflow as tf
-        mpath = os.path.join(MODEL_DIR, 'keras_model.h5')
-        if not os.path.exists(mpath):
-            raise RuntimeError(f'Model file not found: {mpath}')
-        model = tf.keras.models.load_model(mpath)
-    elif model_type.lower() in ('rf', 'random_forest', 'randomforest'):
-        mpath = os.path.join(MODEL_DIR, 'rf_model.save')
-        if not os.path.exists(mpath):
-            raise RuntimeError(f'Model file not found: {mpath}')
-        model = joblib.load(mpath)
-    elif model_type.lower() in ('lr', 'linear', 'linear_regression'):
-        mpath = os.path.join(MODEL_DIR, 'lr_model.save')
-        if not os.path.exists(mpath):
-            raise RuntimeError(f'Model file not found: {mpath}')
-        model = joblib.load(mpath)
-    else:
-        raise RuntimeError(f'Unsupported MODEL_TYPE: {model_type}')
-
-    return model_type.lower(), model, scaler
+# ── Global state (populated at startup) ──────────────────────────────
+_gru_model  = None
+_scaler_X   = None
+_scaler_y   = None
+_lookback   = 20
+_seq_len    = 100
 
 
-MODEL_TYPE_LOADED = None
-MODEL_OBJ = None
-SCALER = None
+# ── Feature engineering (mirrors the notebook) ───────────────────────
+def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    delta = series.diff()
+    up    = delta.clip(lower=0).rolling(period).mean()
+    down  = -delta.clip(upper=0).rolling(period).mean()
+    return 100 - (100 / (1 + up / down))
 
 
-class SeriesIn(BaseModel):
-    series: list  # list of floats (last SEQ_LEN values)
+def _macd(series: pd.Series, a=12, b=26, c=9):
+    ema_a = series.ewm(span=a, adjust=False).mean()
+    ema_b = series.ewm(span=b, adjust=False).mean()
+    line  = ema_a - ema_b
+    sig   = line.ewm(span=c, adjust=False).mean()
+    return line, sig
 
 
-@app.on_event('startup')
+def _build_features(prices: list[float], seq_len: int) -> pd.DataFrame:
+    """Build a single-row feature DataFrame from a list of raw Close prices."""
+    d = pd.DataFrame({"Close": prices})
+    d["return"]   = d["Close"].pct_change().shift(1)
+    d["std30"]    = d["Close"].rolling(30).std().shift(1)
+    d["rsi14"]    = _rsi(d["Close"]).shift(1)
+    ml, ms        = _macd(d["Close"])
+    d["macd"]     = ml.shift(1)
+    d["macd_sig"] = ms.shift(1)
+    d = d.dropna().reset_index(drop=True)
+    for i in range(1, seq_len + 1):
+        d[f"lag_{i}"] = d["Close"].shift(i)
+    d = d.dropna().reset_index(drop=True)
+    return d
+
+
+# ── Startup ───────────────────────────────────────────────────────────
+@app.on_event("startup")
 def startup():
-    global MODEL_TYPE_LOADED, MODEL_OBJ, SCALER
-    MODEL_TYPE_LOADED, MODEL_OBJ, SCALER = load_models()
+    global _gru_model, _scaler_X, _scaler_y, _lookback, _seq_len
+
+    if not os.path.exists(SELECTION_FILE):
+        raise RuntimeError(f"selection.json not found at {SELECTION_FILE}. Run the notebook first.")
+
+    with open(SELECTION_FILE) as f:
+        sel = json.load(f)
+
+    _lookback = sel.get("gru_lookback", 20)
+    _seq_len  = len([k for k in sel.get("features", []) if k.startswith("lag_")])
+    if _seq_len == 0:
+        _seq_len = 100
+
+    import tensorflow as tf
+    model_path = os.path.join(MODEL_DIR, "best_model.keras")
+    if not os.path.exists(model_path):
+        raise RuntimeError(f"Model file not found: {model_path}")
+    _gru_model = tf.keras.models.load_model(model_path)
+
+    _scaler_X = joblib.load(os.path.join(MODEL_DIR, "scaler_X.pkl"))
+    _scaler_y = joblib.load(os.path.join(MODEL_DIR, "scaler_y.pkl"))
 
 
-@app.get('/')
+# ── Endpoints ─────────────────────────────────────────────────────────
+@app.get("/")
 def root():
-    return {'status': 'ok', 'model_serving': MODEL_TYPE_LOADED}
+    return {"status": "ok", "model": "GRU", "lookback": _lookback}
 
 
-@app.post('/predict')
-def predict(payload: SeriesIn):
-    series = np.array(payload.series, dtype=float)
-    if series.ndim != 1:
-        raise HTTPException(status_code=400, detail='`series` must be a 1-D list of floats')
+@app.get("/health")
+def health():
+    return {"status": "healthy"}
+
+
+class PredictRequest(BaseModel):
+    prices: list[float]  # daily Close prices, oldest first; min SEQ_LEN+200 values
+
+
+@app.post("/predict")
+def predict(payload: PredictRequest):
+    min_len = _seq_len + 200  # warmup for RSI/MACD/std
+    if len(payload.prices) < min_len:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Need at least {min_len} prices for indicator warmup (got {len(payload.prices)})"
+        )
+
+    feat_df = _build_features(payload.prices, seq_len=_seq_len)
+    if feat_df.empty:
+        raise HTTPException(status_code=422, detail="Not enough data after feature engineering — send more prices.")
+
+    lag_cols     = [f"lag_{i}" for i in range(1, _seq_len + 1)]
+    extra_cols   = ["std30", "rsi14", "macd", "macd_sig", "return"]
+    feature_cols = lag_cols + extra_cols
+
+    # Use the last available row (most recent prediction point)
+    row = feat_df[feature_cols].iloc[[-1]]
+    row_s = _scaler_X.transform(row)
+
+    # Build GRU sequence: LOOKBACK timesteps of lag prices (oldest → newest)
+    gru_lag_idx = list(range(_lookback - 1, -1, -1))
+    seq = row_s[:, gru_lag_idx].reshape(1, _lookback, 1)
+
+    scaled_pred = _gru_model.predict(seq, verbose=0).ravel()
+    log_ret     = _scaler_y.inverse_transform(scaled_pred.reshape(-1, 1)).ravel()[0]
+    prev_close  = float(feat_df["lag_1"].iloc[-1])
+    predicted   = float(prev_close * np.exp(log_ret))
+
+    return {
+        "predicted_price": round(predicted, 2),
+        "previous_close":  round(prev_close, 2),
+    }
 
     # Expect either flat input for LR/RF (length=SEQ_LEN) or last sequence for LSTM
     if MODEL_TYPE_LOADED in ('lstm', 'keras'):
