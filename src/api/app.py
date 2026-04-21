@@ -1,6 +1,11 @@
 """
 BTC Price Predictor — FastAPI app (GRU model)
 
+GET  /predict/latest
+  → fetches live BTC-USD prices via yfinance, returns tomorrow's prediction
+      {"predicted_price": <float>, "previous_close": <float>,
+       "last_data_date": <str>, "data_points": <int>}
+
 POST /predict  {"prices": [<list of daily Close prices, oldest first>]}
   → {"predicted_price": <float>, "previous_close": <float>}
 
@@ -141,21 +146,51 @@ def predict(payload: PredictRequest):
         "previous_close":  round(prev_close, 2),
     }
 
-    # Expect either flat input for LR/RF (length=SEQ_LEN) or last sequence for LSTM
-    if MODEL_TYPE_LOADED in ('lstm', 'keras'):
-        # reshape to (1, timesteps, 1)
-        x = series.reshape(1, -1, 1)
-        pred = MODEL_OBJ.predict(x)
-        if SCALER is not None:
-            pred = SCALER.inverse_transform(pred.reshape(-1, 1)).flatten()[0]
-        else:
-            pred = float(pred.flatten()[0])
-    else:
-        x = series.reshape(1, -1)
-        pred = MODEL_OBJ.predict(x)
-        if SCALER is not None:
-            pred = SCALER.inverse_transform(np.array(pred).reshape(-1, 1)).flatten()[0]
-        else:
-            pred = float(np.array(pred).flatten()[0])
 
-    return {'prediction': float(pred), 'model': MODEL_TYPE_LOADED}
+@app.get("/predict/latest")
+def predict_latest():
+    """Autonomous endpoint — fetches live BTC-USD prices via yfinance and returns tomorrow's prediction."""
+    try:
+        import yfinance as yf
+    except ImportError:
+        raise HTTPException(status_code=500, detail="yfinance not installed in this environment.")
+
+    df = yf.download("BTC-USD", start="2014-01-01", progress=False, auto_adjust=True)
+    if df.empty:
+        raise HTTPException(status_code=503, detail="Failed to fetch BTC-USD data from yfinance.")
+
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    prices = df["Close"].dropna().squeeze().tolist()
+
+    min_len = _seq_len + 200
+    if len(prices) < min_len:
+        raise HTTPException(status_code=503, detail=f"Not enough historical data (got {len(prices)}, need {min_len}).")
+
+    feat_df = _build_features(prices, seq_len=_seq_len)
+    if feat_df.empty:
+        raise HTTPException(status_code=422, detail="Not enough data after feature engineering.")
+
+    lag_cols     = [f"lag_{i}" for i in range(1, _seq_len + 1)]
+    extra_cols   = ["std30", "rsi14", "macd", "macd_sig", "return"]
+    feature_cols = lag_cols + extra_cols
+
+    row   = feat_df[feature_cols].iloc[[-1]]
+    row_s = _scaler_X.transform(row)
+
+    gru_lag_idx = list(range(_lookback - 1, -1, -1))
+    seq = row_s[:, gru_lag_idx].reshape(1, _lookback, 1)
+
+    scaled_pred = _gru_model.predict(seq, verbose=0).ravel()
+    log_ret     = _scaler_y.inverse_transform(scaled_pred.reshape(-1, 1)).ravel()[0]
+    prev_close  = float(feat_df["lag_1"].iloc[-1])
+    predicted   = float(prev_close * np.exp(log_ret))
+
+    last_date = df.index[-1].strftime("%Y-%m-%d")
+    return {
+        "predicted_price": round(predicted, 2),
+        "previous_close":  round(prev_close, 2),
+        "last_data_date":  last_date,
+        "data_points":     len(prices),
+    }
