@@ -264,81 +264,6 @@ export default function Dashboard({ prediction, driftReport, priceHistory }: Das
         </div>
       </div>
 
-      {/* ── Info row ── */}
-      <div className="btc-info-row">
-        {/* Model architecture */}
-        <div className="btc-card">
-          <h2 className="btc-card__title">Model Architecture</h2>
-          <div className="btc-model-grid">
-            {[
-              ["Type", "GRU(64) → Dense(1)"],
-              ["Lookback window", "20 days"],
-              ["Feature set", "100 price lags · RSI-14 · MACD · std(30) · log-return"],
-              ["Test RMSE", "≈ $1,901"],
-              ["Target variable", "Log-return (reconstructed to price)"],
-              ["Deployed on", "Oracle Cloud VM · eu-frankfurt-1 · Always Free"],
-            ].map(([label, value]) => (
-              <div className="btc-model-item" key={label}>
-                <span className="btc-model-item__label">{label}</span>
-                <span className="btc-model-item__value">{value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Drift monitoring */}
-        <div className="btc-card">
-          <h2 className="btc-card__title">
-            Drift Monitoring
-            <span className={`btc-badge btc-badge--sm ${driftStatusBadge}`}>
-              {driftStatusLabel}
-            </span>
-          </h2>
-
-          {driftReport?.available ? (
-            <div className="btc-model-grid">
-              {[
-                [
-                  "Last checked",
-                  driftReport.timestamp
-                    ? new Date(driftReport.timestamp).toLocaleString()
-                    : "—",
-                ],
-                ["Recent MAE (30d)", driftReport.recent_mae != null ? fmtUSD(driftReport.recent_mae) : "—"],
-                ["Baseline RMSE", driftReport.baseline_rmse != null ? fmtUSD(driftReport.baseline_rmse) : "—"],
-                ["Drift threshold", driftReport.drift_threshold != null ? fmtUSD(driftReport.drift_threshold) : "—"],
-                [
-                  "Retrained this run",
-                  driftReport.retrained
-                    ? `Yes${driftReport.new_rmse != null ? ` (new RMSE: ${fmtUSD(driftReport.new_rmse)})` : ""}`
-                    : "No",
-                ],
-              ].map(([label, value]) => (
-                <div className="btc-model-item" key={label}>
-                  <span className="btc-model-item__label">{label}</span>
-                  <span className="btc-model-item__value">{value}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="btc-model-grid">
-              {[
-                ["Evaluation window", "Last 30 days"],
-                ["Drift threshold", "1.5 × baseline RMSE (~$2,850)"],
-                ["Schedule", "Daily at 06:00 UTC — GitHub Actions"],
-                ["Auto-redeploy", "Docker Hub → Oracle Cloud VM"],
-                ["Status", driftReport?.message ?? "Awaiting first scheduled run"],
-              ].map(([label, value]) => (
-                <div className="btc-model-item" key={label}>
-                  <span className="btc-model-item__label">{label}</span>
-                  <span className="btc-model-item__value">{value}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
       {/* ── Price chart ── */}
       <div className="btc-card btc-card--chart">
         <div className="btc-chart-header">
@@ -446,6 +371,81 @@ export default function Dashboard({ prediction, driftReport, priceHistory }: Das
               : "No chart data to display."}
           </div>
         )}
+      </div>
+
+      {/* ── Info row ── */}
+      <div className="btc-info-row">
+        {/* Model architecture */}
+        <div className="btc-card">
+          <h2 className="btc-card__title">Model Architecture</h2>
+          <div className="btc-model-grid">
+            {[
+              ["Type", "GRU(64) → Dense(1)"],
+              ["Lookback window", "20 days"],
+              ["Feature set", "100 price lags · RSI-14 · MACD · std(30) · log-return"],
+              ["Test RMSE", "≈ $1,901"],
+              ["Target variable", "Log-return (reconstructed to price)"],
+              ["Deployed on", "Oracle Cloud VM · eu-frankfurt-1 · Always Free"],
+            ].map(([label, value]) => (
+              <div className="btc-model-item" key={label}>
+                <span className="btc-model-item__label">{label}</span>
+                <span className="btc-model-item__value">{value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Drift monitoring */}
+        <div className="btc-card">
+          <h2 className="btc-card__title">
+            Drift Monitoring
+            <span className={`btc-badge btc-badge--sm ${driftStatusBadge}`}>
+              {driftStatusLabel}
+            </span>
+          </h2>
+
+          {driftReport?.available ? (
+            <div className="btc-model-grid">
+              {[
+                [
+                  "Last checked",
+                  driftReport.timestamp
+                    ? new Date(driftReport.timestamp).toLocaleString()
+                    : "—",
+                ],
+                ["Recent MAE (30d)", driftReport.recent_mae != null ? fmtUSD(driftReport.recent_mae) : "—"],
+                ["Baseline RMSE", driftReport.baseline_rmse != null ? fmtUSD(driftReport.baseline_rmse) : "—"],
+                ["Drift threshold", driftReport.drift_threshold != null ? fmtUSD(driftReport.drift_threshold) : "—"],
+                [
+                  "Retrained this run",
+                  driftReport.retrained
+                    ? `Yes${driftReport.new_rmse != null ? ` (new RMSE: ${fmtUSD(driftReport.new_rmse)})` : ""}`
+                    : "No",
+                ],
+              ].map(([label, value]) => (
+                <div className="btc-model-item" key={label}>
+                  <span className="btc-model-item__label">{label}</span>
+                  <span className="btc-model-item__value">{value}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="btc-model-grid">
+              {[
+                ["Evaluation window", "Last 30 days"],
+                ["Drift threshold", "1.5 × baseline RMSE (~$2,850)"],
+                ["Schedule", "Daily at 06:00 UTC — GitHub Actions"],
+                ["Auto-redeploy", "Docker Hub → Oracle Cloud VM"],
+                ["Status", driftReport?.message ?? "Awaiting first scheduled run"],
+              ].map(([label, value]) => (
+                <div className="btc-model-item" key={label}>
+                  <span className="btc-model-item__label">{label}</span>
+                  <span className="btc-model-item__value">{value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Footer ── */}
