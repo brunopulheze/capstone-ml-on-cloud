@@ -1,0 +1,100 @@
+name: Daily BTC Drift Check & Retrain
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # 06:00 UTC every day
+  workflow_dispatch:
+    inputs:
+      force_retrain:
+        description: 'Force retrain regardless of drift (true/false)'
+        required: false
+        default: 'false'
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Python setup ────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ── Drift check / retrain ────────────────────────────────────────
+      - name: Run drift check
+        run: |
+          ARGS=""
+          if [ "${{ github.event.inputs.force_retrain }}" = "true" ]; then
+            ARGS="--force"
+          fi
+          python src/training/retrain.py $ARGS
+
+      # ── Check outcome ────────────────────────────────────────────────
+      - name: Read retrain result
+        id: result
+        run: |
+          retrained=$(python -c "import json; d=json.load(open('models/drift_report.json')); print(str(d['retrained']).lower())")
+          echo "retrained=$retrained" >> "$GITHUB_OUTPUT"
+
+      # ── Upload drift report (always) ─────────────────────────────────
+      - name: Upload drift report
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-report-${{ github.run_id }}
+          path: models/drift_report.json
+
+      # ── Steps below only run when the model was actually retrained ───
+
+      - name: Commit updated model artifacts
+        if: steps.result.outputs.retrained == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add models/best_model.keras models/scaler_X.pkl models/scaler_y.pkl models/selection.json models/drift_report.json
+          git commit -m "chore: retrain GRU model [skip ci] $(date -u +%Y-%m-%d)"
+          git push
+
+      - name: Log in to Docker Hub
+        if: steps.result.outputs.retrained == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        if: steps.result.outputs.retrained == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: brunopulheze/btc-predictor:latest
+
+      - name: Redeploy on Oracle Cloud VM
+        if: steps.result.outputs.retrained == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.OCI_HOST }}
+          username: ubuntu
+          key:      ${{ secrets.OCI_SSH_KEY }}
+          script: |
+            docker pull brunopulheze/btc-predictor:latest
+            docker stop btc-predictor || true
+            docker rm   btc-predictor || true
+            docker run -d \
+              --name btc-predictor \
+              --restart unless-stopped \
+              -p 8080:8080 \
+              -e MODEL_DIR=/app/models \
+              brunopulheze/btc-predictor:latest
+            echo "Redeployed at $(date -u)"
