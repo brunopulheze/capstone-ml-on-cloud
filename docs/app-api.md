@@ -4,12 +4,13 @@
 
 `app.py` is a **FastAPI** application that serves the trained GRU model as an HTTP REST API. It accepts a list of historical Bitcoin close prices, runs the same feature engineering pipeline used during training, and returns a next-day price prediction.
 
-**Live URL**: https://btc-predictor-ngio.onrender.com
+**Live URL**: http://138.2.180.250:8080
 
 ```
-GET  /health   → {"status": "healthy"}
-GET  /         → {"status": "ok", "model": "GRU", "lookback": 20}
-POST /predict  → {"predicted_price": 75212.93, "previous_close": 75872.52}
+GET  /health          → {"status": "healthy"}
+GET  /                → {"status": "ok", "model": "GRU", "lookback": 20}
+GET  /predict/latest  → autonomous prediction (no input required)
+POST /predict         → prediction from user-supplied price list
 ```
 
 ---
@@ -46,6 +47,28 @@ Lightweight liveness check for load balancers and monitoring.
 ```json
 {"status": "healthy"}
 ```
+
+---
+
+### `GET /predict/latest`
+Autonomous endpoint — no input required. Downloads the full BTC-USD price history via **yfinance**, runs the prediction pipeline internally, and returns tomorrow's estimated price.
+
+**Response**
+```json
+{
+  "predicted_price": 75684.95,
+  "previous_close":  76352.77,
+  "last_data_date":  "2026-04-22",
+  "data_points":     4236
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `predicted_price` | GRU's estimate of the next-day close price (USD) |
+| `previous_close` | Most recent close price used as the reconstruction base |
+| `last_data_date` | Date of the most recent candle used |
+| `data_points` | Total number of price records downloaded |
 
 ---
 
@@ -146,15 +169,15 @@ docker run --rm -p 8081:8080 -v "${PWD}/models:/app/models" btc-predictor:latest
 
 The `Dockerfile` sets `MODEL_DIR=/app/models` and starts uvicorn on port 8080.
 
-## Live deployment (Render)
+## Live deployment (Oracle Cloud)
 
-The API is deployed on Render using the Docker Hub image `brunopulheze/btc-predictor:latest`.  
-See [`deploy-render.md`](deploy-render.md) for the full deployment guide.
+The API runs in a Docker container on an OCI `VM.Standard.E2.1.Micro` instance in Frankfurt.  
+See [`deploy-oracle.md`](deploy-oracle.md) for the full deployment guide.
 
 Smoke test against the live service:
 
 ```powershell
-python tests/smoke_test.py --url https://btc-predictor-ngio.onrender.com
+python tests/smoke_test.py --url http://138.2.180.250:8080
 ```
 
 ---

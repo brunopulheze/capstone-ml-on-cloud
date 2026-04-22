@@ -2,17 +2,16 @@
 
 ## Overview
 
-End-to-end machine learning project that predicts daily **Bitcoin/USD (BTC-USD)** closing prices using a **GRU (Gated Recurrent Unit)** neural network. Experiment tracking is handled by MLflow. The model is served as a REST API, containerised with Docker, and deployed on **Render**.
+End-to-end machine learning project that predicts daily **Bitcoin/USD (BTC-USD)** closing prices using a **GRU (Gated Recurrent Unit)** neural network. Experiment tracking is handled by MLflow. The model is served as a REST API, containerised with Docker, and deployed on **Oracle Cloud Infrastructure**.
 
-**Live API**: https://btc-predictor-ngio.onrender.com
+**Live API**: http://138.2.180.250:8080
 
 ```
-GET  /health   → {"status": "healthy"}
-GET  /         → {"status": "ok", "model": "GRU", "lookback": 20}
-POST /predict  → {"predicted_price": 75212.93, "previous_close": 75872.52}
+GET  /health          → {"status": "healthy"}
+GET  /                → {"status": "ok", "model": "GRU", "lookback": 20}
+GET  /predict/latest  → autonomous prediction (fetches BTC prices via yfinance)
+POST /predict         → prediction from a user-supplied price list
 ```
-
-> The free-tier Render service spins down after 15 min of inactivity — the first request after a cold start may take ~30 s.
 
 ---
 
@@ -38,7 +37,7 @@ capstone-ml-on-cloud/
 ├── docs/
 │   ├── capstone-briefing.md               # Project briefing
 │   ├── app-api.md                         # API reference
-│   └── deploy-render.md                   # Render deployment guide
+│   └── deploy-oracle.md                   # Oracle Cloud deployment guide
 ├── Dockerfile
 ├── requirements.txt
 └── README.md
@@ -120,16 +119,19 @@ docker run --rm -p 8081:8080 -v "${PWD}/models:/app/models" btc-predictor:latest
 # Against local Docker container (port 8081)
 python tests/smoke_test.py --port 8081
 
-# Against the live Render deployment
-python tests/smoke_test.py --url https://btc-predictor-ngio.onrender.com
+# Against the live Oracle Cloud deployment
+python tests/smoke_test.py --url http://138.2.180.250:8080
 ```
 
 ---
 
 ## Deployment
 
-The API is deployed on **Render** using the Docker image `brunopulheze/btc-predictor:latest` (Docker Hub).  
-See [`docs/deploy-render.md`](docs/deploy-render.md) for the full deployment guide.
+The Docker image `brunopulheze/btc-predictor:latest` is hosted on Docker Hub and deployed on **Oracle Cloud Infrastructure** — an Always Free `VM.Standard.E2.1.Micro` instance in Frankfurt (`eu-frankfurt-1`).
+
+| Guide | Platform | URL |
+|-------|----------|-----|
+| [`docs/deploy-oracle.md`](docs/deploy-oracle.md) | Oracle Cloud VM | http://138.2.180.250:8080 |
 
 ---
 

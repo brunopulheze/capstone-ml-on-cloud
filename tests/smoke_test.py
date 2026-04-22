@@ -3,9 +3,9 @@ Smoke test for the btc-predictor API.
 
 Requires the container (or uvicorn) to be running before executing.
 
-  Live Render: python tests/smoke_test.py --url https://btc-predictor-ngio.onrender.com
-  Docker:      python tests/smoke_test.py --port 8081
-  Local:       python tests/smoke_test.py --port 8080
+  Oracle Cloud: python tests/smoke_test.py --url http://138.2.180.250:8080
+  Docker:       python tests/smoke_test.py --port 8081
+  Local:        python tests/smoke_test.py --port 8080
 
 Use --url for any full base URL, or --port to target localhost:<port>.
 """
@@ -57,7 +57,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="API smoke test")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--url",  type=str,
-                       help="Full base URL to test (e.g. https://btc-predictor-ngio.onrender.com)")
+                       help="Full base URL to test (e.g. http://138.2.180.250:8080)")
     group.add_argument("--port", type=int, default=8081,
                        help="Localhost port to test (default: 8081)")
     args = parser.parse_args()
