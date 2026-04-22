@@ -22,9 +22,17 @@ import joblib
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 app = FastAPI(title="BTC Price Predictor — GRU")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
 
 # ── Paths ─────────────────────────────────────────────────────────────
 MODEL_DIR      = os.getenv("MODEL_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "models"))
@@ -194,3 +202,18 @@ def predict_latest():
         "last_data_date":  last_date,
         "data_points":     len(prices),
     }
+
+
+@app.get("/drift-report")
+def drift_report():
+    """Return the latest drift detection report, or a default if not yet generated."""
+    report_path = os.path.join(MODEL_DIR, "drift_report.json")
+    if not os.path.exists(report_path):
+        return {
+            "available": False,
+            "message": "No drift report yet — awaiting first scheduled GitHub Actions run (daily at 06:00 UTC).",
+        }
+    with open(report_path) as f:
+        data = json.load(f)
+    data["available"] = True
+    return data

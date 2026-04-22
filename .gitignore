@@ -32,6 +32,11 @@ notebooks/mlruns/
 .DS_Store
 Thumbs.db
 
+# Next.js dashboard
+dashboard/node_modules/
+dashboard/.next/
+dashboard/out/
+
 # Distribution / packaging
 dist/
 build/
