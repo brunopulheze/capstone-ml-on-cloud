@@ -204,33 +204,45 @@ def main(force: bool = False) -> dict:
     feat_df = build_features(prices)
     print(f"  {len(feat_df)} rows after feature engineering")
 
-    # ── 3. Load current model & baseline ─────────────────────────────
-    with open(SELECTION_FILE) as f:
-        sel = json.load(f)
+    # ── 3. Load baseline config ───────────────────────────────────────
+    sel: dict = {}
+    if os.path.exists(SELECTION_FILE):
+        with open(SELECTION_FILE) as f:
+            sel = json.load(f)
 
     baseline_rmse = float(sel.get("rmse", 1901.0))
     lookback      = int(sel.get("gru_lookback", LOOKBACK))
     seq_len       = len([k for k in sel.get("features", []) if k.startswith("lag_")]) or SEQ_LEN
 
-    model    = tf.keras.models.load_model(os.path.join(MODEL_DIR, "best_model.keras"))
-    scaler_X = joblib.load(os.path.join(MODEL_DIR, "scaler_X.pkl"))
-    scaler_y = joblib.load(os.path.join(MODEL_DIR, "scaler_y.pkl"))
+    # ── 4. Drift detection (skipped on cold start) ────────────────────
+    model_path = os.path.join(MODEL_DIR, "best_model.keras")
+    cold_start = not os.path.exists(model_path)
 
-    # ── 4. Drift detection ────────────────────────────────────────────
-    print(f"\nEvaluating last {EVAL_DAYS} days...")
-    recent_mae, _ = evaluate_recent(feat_df, model, scaler_X, scaler_y, lookback, seq_len)
-    threshold     = DRIFT_THRESHOLD * baseline_rmse
-    drift         = recent_mae > threshold
+    if cold_start:
+        print("\nNo existing model found — cold-start training.")
+        recent_mae: float | None = None
+        drift = False
+        force = True   # always train when no model exists
+    else:
+        model    = tf.keras.models.load_model(model_path)
+        scaler_X = joblib.load(os.path.join(MODEL_DIR, "scaler_X.pkl"))
+        scaler_y = joblib.load(os.path.join(MODEL_DIR, "scaler_y.pkl"))
 
-    print(f"  Recent MAE:      ${recent_mae:>10,.2f}")
-    print(f"  Baseline RMSE:   ${baseline_rmse:>10,.2f}")
-    print(f"  Drift threshold: ${threshold:>10,.2f}  ({DRIFT_THRESHOLD}× baseline)")
-    print(f"  Drift detected:  {drift}")
+        print(f"\nEvaluating last {EVAL_DAYS} days...")
+        recent_mae, _ = evaluate_recent(feat_df, model, scaler_X, scaler_y, lookback, seq_len)
+        threshold     = DRIFT_THRESHOLD * baseline_rmse
+        drift         = recent_mae > threshold
 
+        print(f"  Recent MAE:      ${recent_mae:>10,.2f}")
+        print(f"  Baseline RMSE:   ${baseline_rmse:>10,.2f}")
+        print(f"  Drift threshold: ${threshold:>10,.2f}  ({DRIFT_THRESHOLD}× baseline)")
+        print(f"  Drift detected:  {drift}")
+
+    threshold = DRIFT_THRESHOLD * baseline_rmse
     report: dict = {
         "timestamp":       datetime.datetime.utcnow().isoformat(),
         "eval_days":       EVAL_DAYS,
-        "recent_mae":      round(recent_mae, 2),
+        "recent_mae":      round(recent_mae, 2) if recent_mae is not None else None,
         "baseline_rmse":   round(baseline_rmse, 2),
         "drift_threshold": round(threshold, 2),
         "drift_detected":  drift,
@@ -258,7 +270,8 @@ def main(force: bool = False) -> dict:
                     "seq_len":  seq_len,
                     "eval_days": EVAL_DAYS,
                 })
-                mlflow.log_metric("pre_retrain_mae", recent_mae)
+                if recent_mae is not None:
+                    mlflow.log_metric("pre_retrain_mae", recent_mae)
 
             new_model, new_scaler_X, new_scaler_y, new_rmse = retrain(feat_df, lookback, seq_len)
             print(f"\n  New test RMSE: ${new_rmse:>10,.2f}  (was ${baseline_rmse:,.2f})")

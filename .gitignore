@@ -11,11 +11,9 @@ __pycache__/
 # Jupyter checkpoints
 .ipynb_checkpoints/
 
-# Model artifacts (tracked via MLflow / DVC instead)
+# Model artifacts — .h5 and .save are legacy formats, not used
 models/*.h5
 models/*.save
-models/*.pkl
-models/*.keras
 
 # MLflow local tracking (db and artifacts stored in mlflow/)
 mlflow/mlruns/
