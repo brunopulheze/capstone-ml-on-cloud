@@ -20,10 +20,16 @@ POST /predict         → prediction from a user-supplied price list
 ```
 capstone-ml-on-cloud/
 ├── notebooks/
-│   ├── bitcoin-price-prediction.ipynb     # Main notebook (EDA → GRU → evaluation)
-│   └── compare_models.ipynb               # Model comparison (LR / RF / LSTM / GRU)
+│   ├── 01-compare-models.ipynb            # Model comparison (LR / RF / LSTM / GRU)
+│   ├── 02-bitcoin-price-prediction.ipynb  # Main notebook (EDA → GRU → evaluation)
+│   └── 03-feature-exploration.ipynb       # Feature exploration and analysis
 ├── models/
-│   ├── best_model.keras                   # Trained GRU model
+│   ├── best_model.keras                   # Trained GRU model (Keras)
+│   ├── best_model.pkl                     # Best model (pickle)
+│   ├── keras_model.h5                     # GRU model (HDF5 format)
+│   ├── lr_model.save                      # Logistic Regression model
+│   ├── rf_model.save                      # Random Forest model
+│   ├── scaler.save                        # Scaler (joblib)
 │   ├── scaler_X.pkl                       # MinMaxScaler for features
 │   ├── scaler_y.pkl                       # StandardScaler for log-return target
 │   └── selection.json                     # Model metadata (type, lookback, features)
@@ -32,12 +38,20 @@ capstone-ml-on-cloud/
 │   ├── training/                          # Model training scripts
 │   └── api/
 │       └── app.py                         # FastAPI inference service
+├── dashboard/                             # Next.js 15 frontend dashboard
+│   ├── app/                               # App Router pages and layout
+│   └── components/
+│       └── Dashboard.tsx                  # Main dashboard component
 ├── tests/
 │   └── smoke_test.py                      # API smoke test (local or remote)
 ├── docs/
 │   ├── capstone-briefing.md               # Project briefing
 │   ├── app-api.md                         # API reference
-│   └── deploy-oracle.md                   # Oracle Cloud deployment guide
+│   ├── dashboard.md                       # Dashboard guide
+│   ├── deploy-oracle.md                   # Oracle Cloud deployment guide
+│   ├── model-overview.md                  # Model architecture overview
+│   ├── retrain.md                         # Retraining guide
+│   └── scripts-guide.md                   # Scripts reference
 ├── Dockerfile
 ├── requirements.txt
 └── README.md
@@ -64,8 +78,8 @@ python -m venv venv
 python -m pip install -r requirements.txt
 ```
 
-### 4. Run the notebook
-Open `notebooks/bitcoin-price-prediction.ipynb` in VS Code or Jupyter and run all cells. This trains the GRU and saves model artifacts to `models/`.
+### 4. Run the notebooks
+Open `notebooks/02-bitcoin-price-prediction.ipynb` in VS Code or Jupyter and run all cells. This trains the GRU and saves model artifacts to `models/`. Use `notebooks/01-compare-models.ipynb` to compare LR, RF, LSTM, and GRU models.
 
 ### 5. View MLflow experiments
 ```powershell
@@ -79,12 +93,12 @@ Then open http://localhost:5000 in your browser.
 
 | Step | Description |
 |------|-------------|
-| Data retrieval | Daily BTC/USD prices via `yfinance` from 2014 to today |
+| Data retrieval | Daily BTC/USD prices via `yfinance` from 2015 to today |
 | Feature engineering | 100-day lag window, RSI-14, MACD, 30-day rolling std, yesterday's return — all shifted by 1 day (leak-free) |
 | Preprocessing | MinMaxScaler on features, StandardScaler on log-return target, 70/30 train/test split |
 | Model | **GRU(64) + Dense(1)**, LOOKBACK=20 timesteps, Adam + MSE, EarlyStopping (patience=10) |
 | Tracking | MLflow logs parameters, RMSE, and artifacts |
-| Evaluation | Price reconstruction from predicted log-returns, RMSE ~$1901 |
+| Evaluation | Price reconstruction from predicted log-returns, RMSE ~$622 |
 
 ---
 
@@ -96,7 +110,21 @@ Then open http://localhost:5000 in your browser.
 | Lookback window | 20 days |
 | Feature set | 100 lag features + RSI-14 + MACD + MACD signal + rolling std(30) + yesterday's return |
 | Target | Log-return (rescaled back to price) |
-| Test RMSE | ~$1,901 |
+| Test RMSE | ~$622 |
+
+---
+
+## Dashboard
+
+A live Next.js 15 dashboard visualises actual vs predicted BTC prices using Recharts and Tailwind CSS.
+
+```bash
+cd dashboard
+npm install
+npm run dev
+```
+
+Then open http://localhost:3000. See [`docs/dashboard.md`](docs/dashboard.md) for details.
 
 ---
 
