@@ -42,14 +42,14 @@ All features are computed from the raw `Close` price and **shifted by 1 day** to
 
 | Feature | Description |
 |---|---|
-| `lag_1` … `lag_100` | Closing prices for the previous 1–100 trading days |
+| `lag_1` … `lag_20` | Closing prices for the previous 1–20 trading days |
 | `std30` | 30-day rolling standard deviation of Close (volatility proxy) |
 | `rsi14` | Relative Strength Index over 14 days (momentum oscillator, 0–100) |
 | `macd` | MACD line: EMA(12) − EMA(26) of Close (trend indicator) |
 | `macd_sig` | MACD signal line: EMA(9) of the MACD line |
-| `return` | Previous day's percentage change in Close |
+| `return` | Previous day’s percentage change in Close |
 
-**Total features:** 105
+**Total features:** 25
 
 ### Scaling
 - **X (features):** `MinMaxScaler` — fits to `[0, 1]` based on training range
@@ -59,39 +59,19 @@ All features are computed from the raw `Close` price and **shifted by 1 day** to
 
 ## How models use the full price history
 
-All three models are trained on the full BTC-USD history downloaded from Yahoo Finance (~4 200 daily closes from 2014 to today). The raw history is converted into a feature matrix where **each row represents one trading day** and contains all 105 features for that day. This gives ~4 100 training rows (some early rows are dropped during indicator warm-up).
+All three models are trained on the full BTC-USD history downloaded from Yahoo Finance (~4 200 daily closes from 2014 to today). The raw history is converted into a feature matrix where **each row represents one trading day** and contains all 25 features for that day. This gives ~4 100 training rows (some early rows are dropped during indicator warm-up).
 
-Every model trains on all ~4 100 rows. The difference is in what each row looks like to the model.
+### Flat feature vector (25 numbers, no order)
 
-### Trees — flat feature vector (105 numbers, no order)
-
-For Random Forest and XGBoost, each row is presented as a flat list of 105 independent numbers:
+For all three models, each row is presented as a flat list of 25 numbers:
 
 ```
 Row for day t:
-[lag_1, lag_2, lag_3, ..., lag_100, std30, rsi14, macd, macd_sig, return]
-  ↑ yesterday          ↑ 100 days ago
+[lag_1, lag_2, lag_3, ..., lag_20, std30, rsi14, macd, macd_sig, return]
+  ↑ yesterday       ↑ 20 days ago
 ```
 
-The model has no concept of which lag came before which. It just learns rules like "when `lag_1` is high *and* `rsi14` > 70, the return tends to be negative" — treating all 105 columns as simultaneous inputs with no temporal relationship between them.
-
-### GRU — ordered sequence (20 timesteps, time matters)
-
-For the GRU, each row's first 20 lag columns are extracted and **arranged in chronological order** as a sequence of shape `(20, 1)`:
-
-```
-Row for day t, reshaped for GRU:
-timestep:  1          2          3     ...    20
-price:  [lag_20,   lag_19,   lag_18,  ...,  lag_1]
-          ↑ oldest                          ↑ most recent
-```
-
-The GRU processes this sequence step by step, updating its internal hidden state at each timestep. This lets it learn **temporal patterns** — e.g. "three consecutive rises followed by a plateau tends to precede a drop" — which the trees cannot detect because they see all lags simultaneously with no ordering.
-
-### Why 100 lag columns but only 20 GRU timesteps?
-
-- **100 lags (`SEQ_LEN`)** is the width of the feature table, giving the tree models a rich 100-day view of price history as flat inputs.
-- **20 lookback (`LOOKBACK`)** is the window the GRU reads *as a sequence*. A 100-step GRU sequence would be 5× harder to train and more prone to vanishing gradients. 20 days (~1 trading month) captures enough short-to-medium-term momentum for the gating mechanism to be effective. The GRU simply ignores `lag_21` through `lag_100`.
+Random Forest and XGBoost learn rules like "when `lag_1` is high *and* `rsi14` > 70, the return tends to be negative" — treating all 25 columns as simultaneous inputs with no temporal relationship. GRU in `compare_models.py` additionally processes the first 20 lags as an ordered sequence, but the **production model is Random Forest** using the flat vector.
 
 ### Sliding window
 
@@ -100,14 +80,11 @@ The ~4 100 training rows are created by a sliding window over the full history:
 ```
 Row 1:    [day_1,  day_2,  ..., day_20]  → predict day_21
 Row 2:    [day_2,  day_3,  ..., day_21]  → predict day_22
-Row 3:    [day_3,  day_4,  ..., day_22]  → predict day_23
 ...
 Row 4100: [day_4081, ..., day_4100]      → predict day_4101
 ```
 
-Each day in the history appears in multiple windows, so the GRU effectively learns from every 20-day pattern that has ever occurred in BTC's price history.
-
-At **inference time**, there is only one window — the most recent 20 days — and the GRU runs on that single row to produce tomorrow's prediction.
+At **inference time**, there is only one row — built from the most recent 20 days of price history.
 
 ---
 
@@ -150,7 +127,7 @@ price[t] = close[t-1] × exp(predicted_log_return)
 1. Start with training data only
 2. Predict the next step
 3. Add that step to the training window
-4. Retrain tree models every `K=7` steps (GRU is not retrained per step due to cost)
+4. Retrain tree models every `K=7` steps (GRU in `compare_models.py` is not retrained per step due to cost)
 5. Repeat for up to `max_iters=200` steps
 
 Walk-forward is more realistic than holdout because the model is evaluated in sequence, never seeing future data at any step. The best model is selected based on walk-forward RMSE.

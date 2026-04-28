@@ -2,13 +2,13 @@
 
 ## Overview
 
-`app.py` is a **FastAPI** application that serves the trained GRU model as an HTTP REST API. It accepts a list of historical Bitcoin close prices, runs the same feature engineering pipeline used during training, and returns a next-day price prediction.
+`app.py` is a **FastAPI** application that serves the trained Random Forest model as an HTTP REST API. It accepts a list of historical Bitcoin close prices, runs the same feature engineering pipeline used during training, and returns a next-day price prediction.
 
 **Live URL**: http://138.2.180.250:8080
 
 ```
 GET  /health          → {"status": "healthy"}
-GET  /                → {"status": "ok", "model": "GRU", "lookback": 20}
+GET  /                → {"status": "ok", "model": "RF", "n_features": 25}
 GET  /predict/latest  → autonomous prediction (no input required)
 POST /predict         → prediction from user-supplied price list
 ```
@@ -19,8 +19,8 @@ POST /predict         → prediction from user-supplied price list
 
 When the server starts (`uvicorn src.api.app:app`), the `startup()` function runs automatically and:
 
-1. Reads `models/selection.json` to get `gru_lookback` and the feature list
-2. Loads `models/best_model.keras` — the trained GRU network (TensorFlow/Keras)
+1. Reads `models/selection.json` to get the feature list
+2. Loads `models/rf_model.save` — the trained Random Forest (scikit-learn, via joblib)
 3. Loads `models/scaler_X.pkl` — `MinMaxScaler` fitted on training features
 4. Loads `models/scaler_y.pkl` — `StandardScaler` fitted on training log-returns
 
@@ -31,11 +31,11 @@ The model directory defaults to `../../models` relative to `app.py`, and can be 
 ## Endpoints
 
 ### `GET /`
-Returns the server status and the GRU lookback window size.
+Returns the server status and number of features the model expects.
 
 **Response**
 ```json
-{"status": "ok", "model": "GRU", "lookback": 20}
+{"status": "ok", "model": "RF", "n_features": 25}
 ```
 
 ---
@@ -65,7 +65,7 @@ Autonomous endpoint — no input required. Downloads the full BTC-USD price hist
 
 | Field | Description |
 |-------|-------------|
-| `predicted_price` | GRU's estimate of the next-day close price (USD) |
+| `predicted_price` | RF's estimate of the next-day close price (USD) |
 | `previous_close` | Most recent close price used as the reconstruction base |
 | `last_data_date` | Date of the most recent candle used |
 | `data_points` | Total number of price records downloaded |
@@ -84,7 +84,7 @@ Runs the full prediction pipeline and returns tomorrow's estimated BTC price.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `prices` | `list[float]` | Historical daily BTC/USD close prices, **oldest first**. Must contain at least `SEQ_LEN + 200 = 300` values to allow all indicators to warm up without NaN rows. In practice, send all available history (e.g. 2014–today via yfinance). |
+| `prices` | `list[float]` | Historical daily BTC/USD close prices, **oldest first**. Must contain at least `SEQ_LEN + 200 = 220` values to allow all indicators to warm up without NaN rows. In practice, send all available history (e.g. 2014–today via yfinance). |
 
 **Response**
 ```json
@@ -96,14 +96,14 @@ Runs the full prediction pipeline and returns tomorrow's estimated BTC price.
 
 | Field | Description |
 |-------|-------------|
-| `predicted_price` | GRU's estimate of the next-day close price (USD) |
+| `predicted_price` | RF's estimate of the next-day close price (USD) |
 | `previous_close` | The most recent close price used as the reconstruction base |
 
 **Error responses**
 
 | Code | Reason |
 |------|--------|
-| `422` | Fewer than 300 prices provided, or not enough data after feature engineering |
+| `422` | Fewer than 220 prices provided, or not enough data after feature engineering |
 
 ---
 
@@ -118,16 +118,13 @@ _build_features()
   ├─ rolling std (30-day)     rolling(30).std().shift(1)
   ├─ RSI-14                   _rsi().shift(1)
   ├─ MACD line & signal       _macd().shift(1)
-  └─ lag_1 … lag_100          Close.shift(1..100)
+  └─ lag_1 … lag_20            Close.shift(1..20)
       │
       ▼  (last row only — most recent prediction point)
-scaler_X.transform()          MinMaxScaler → [0, 1]
+scaler_X.transform()          MinMaxScaler → [0, 1]  (25-feature flat row)
       │
       ▼
-GRU sequence                  columns lag_19…lag_0 reshaped to (1, 20, 1)
-      │                       (oldest timestep first)
-      ▼
-gru_model.predict()           → scaled log-return
+rf_model.predict()            → scaled log-return
       │
       ▼
 scaler_y.inverse_transform()  → raw log-return
@@ -188,7 +185,7 @@ All produced by running `bitcoin-price-prediction.ipynb` end-to-end:
 
 | File | Description |
 |------|-------------|
-| `models/best_model.keras` | Trained GRU network |
+| `models/rf_model.save` | Trained Random Forest (joblib) |
 | `models/scaler_X.pkl` | MinMaxScaler for features |
 | `models/scaler_y.pkl` | StandardScaler for log-return target |
-| `models/selection.json` | Metadata: lookback, feature list, RMSE |
+| `models/selection.json` | Metadata: feature list, RMSE |

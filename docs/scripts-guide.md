@@ -7,19 +7,19 @@ This document explains every runnable script in the project: what it does, when 
 ## `src/training/retrain.py` — Drift Detection & Retraining
 
 ### Purpose
-Automated pipeline that detects whether the live GRU model has degraded in performance ("drift") on recent data, and retrains it if so. This is the core of the **Tier 2** model monitoring requirement.
+Automated pipeline that detects whether the live RF model has degraded in performance ("drift") on recent data, and retrains it if so. This is the core of the **Tier 2** model monitoring requirement.
 
 ### How it works
 
 ```
 1. Download full BTC-USD history (yfinance, 2014 → today)
-2. Build features  ← identical pipeline to app.py (lag_1…lag_100, RSI-14, MACD, std30, return)
-3. Load current model (best_model.keras) + scalers from models/
+2. Build features  ← identical pipeline to app.py (lag_1…lag_20, RSI-14, MACD, std30, return)
+3. Load current model (rf_model.save) + scalers from models/
 4. Predict the last 30 days   →   compute recent MAE
 5. Compare: recent MAE  vs.  1.5 × baseline RMSE (from selection.json)
       ├─ NO drift  →  write drift_report.json, exit
-      └─ DRIFT     →  retrain GRU from scratch (70/30 split)
-                       save best_model.keras, scaler_X.pkl, scaler_y.pkl, selection.json
+      └─ DRIFT     →  retrain RF from scratch (70/30 split)
+                       save rf_model.save, scaler_X.pkl, scaler_y.pkl, selection.json
                        log run to MLflow (if installed)
                        write drift_report.json
 ```
@@ -150,11 +150,10 @@ Exit code `0` = all passed, `1` = failure (with error message on stderr).
 ### Purpose
 One-off training script used during the **model selection phase**. Trains RandomForest, XGBoost, and LSTM on the same engineered features and evaluates each with both hold-out and walk-forward cross-validation. Writes `models/selection.json` with the winning model.
 
-> This script is **not part of the automated pipeline**. It was used in the notebook exploration phase to decide that GRU outperformed all three. The GRU training is now handled exclusively by `retrain.py` and the main notebook.
+> This script is **not part of the automated pipeline**. It was used in the notebook exploration phase to decide that Random Forest was the best model on log-return RMSE. The RF training is now handled exclusively by `retrain.py` and the main notebook.
 
 ### Feature set (used for comparison)
-- 100-day lag window (`lag_1` … `lag_100`)
-- 100-day rolling mean (shifted)
+- 20-day lag window (`lag_1` … `lag_20`)
 - Rolling std(30) (shifted)
 - RSI-14, MACD, MACD signal (all shifted by 1 day)
 - Daily return
@@ -175,7 +174,7 @@ python src/training/compare_models.py
 
 Outputs metrics to stdout and saves `models/selection.json`.
 
-> **Note**: the final GRU model is trained separately in `notebooks/bitcoin-price-prediction.ipynb`, which supersedes this script's model artifacts.
+> **Note**: the final RF model is trained separately in `notebooks/02-bitcoin-price-prediction.ipynb`, which supersedes this script's model artifacts.
 
 ---
 

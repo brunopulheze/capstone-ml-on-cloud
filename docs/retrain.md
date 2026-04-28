@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`retrain.py` runs every day via GitHub Actions (06:00 UTC). Its job is to check whether the deployed GRU model has become less accurate on recent BTC prices — a phenomenon called **model drift** — and retrain it from scratch if needed.
+`retrain.py` runs every day via GitHub Actions (06:00 UTC). Its job is to check whether the deployed Random Forest model has become less accurate on recent BTC prices — a phenomenon called **model drift** — and retrain it from scratch if needed.
 
 It can also be triggered manually from the command line:
 
@@ -26,7 +26,7 @@ python src/training/retrain.py --force
 │     └─ If no model exists → cold start, skip to step 5           │
 │  4. Evaluate model on last 30 days → recent MAE                  │
 │     └─ MAE > 1.5 × baseline RMSE? → drift = True                 │
-│  5. If drift OR --force → retrain GRU from scratch               │
+│  5. If drift OR --force → retrain RF from scratch                │
 │     └─ Save new model artifacts to models/                       │
 │  6. Write models/drift_report.json                               │
 └──────────────────────────────────────────────────────────────────┘
@@ -61,15 +61,15 @@ Calls `build_features(prices)`, which produces the same 25-column feature matrix
 
 ## Step 3 — Load existing model
 
-Reads `models/selection.json` to retrieve the last known RMSE and the model configuration (lookback window, feature list). Then loads:
+Reads `models/selection.json` to retrieve the last known RMSE and the model configuration. Then loads:
 
 | File | Contents |
 |---|---|
-| `models/best_model.keras` | Trained GRU network weights |
+| `models/rf_model.save` | Trained Random Forest (joblib) |
 | `models/scaler_X.pkl` | MinMaxScaler fitted on training features |
 | `models/scaler_y.pkl` | StandardScaler fitted on training log-returns |
 
-**Cold start:** If `best_model.keras` does not exist (e.g. first run on a fresh clone), this step is skipped and the pipeline goes directly to retraining.
+**Cold start:** If `rf_model.save` does not exist (e.g. first run on a fresh clone), this step is skipped and the pipeline goes directly to retraining.
 
 ---
 
@@ -98,14 +98,13 @@ drift = recent_MAE  >  DRIFT_THRESHOLD × baseline_RMSE
 
 ## Step 5 — Retraining (only if needed)
 
-Calls `retrain(feat_df)`, which trains a brand-new GRU from scratch on the full price history:
+Calls `retrain(feat_df)`, which trains a brand-new Random Forest from scratch on the full price history:
 
 1. **Split** — chronological 70/30 (no shuffling, to avoid future leakage)
 2. **Scale** — fit MinMaxScaler on X_train only; fit StandardScaler on y_train only
-3. **Reshape** — convert feature rows into 3-D GRU sequences of shape `(n, 20, 1)`
-4. **Train** — `GRU(64) → Dense(1)`, Adam, MSE loss, up to 100 epochs with EarlyStopping (patience=10)
-5. **Evaluate** — compute RMSE on the held-out test set in USD (after back-transforming predictions)
-6. **Save** — write `best_model.keras`, `scaler_X.pkl`, `scaler_y.pkl`, and update `selection.json`
+3. **Train** — `RandomForestRegressor(n_estimators=300, random_state=42, n_jobs=-1)`
+4. **Evaluate** — compute RMSE on the held-out test set in USD (after back-transforming predictions)
+5. **Save** — write `rf_model.save`, `scaler_X.pkl`, `scaler_y.pkl`, and update `selection.json`
 
 The back-transformation from predicted log-return to USD price:
 
@@ -147,7 +146,6 @@ This file is consumed by the FastAPI `GET /drift-report` endpoint and displayed 
 | Constant | Value | Meaning |
 |---|---|---|
 | `SEQ_LEN` | 20 | Number of lag features |
-| `LOOKBACK` | 20 | GRU sequence length (days) |
 | `EVAL_DAYS` | 30 | Recent window used for drift detection |
 | `DRIFT_THRESHOLD` | 1.5 | Multiplier applied to baseline RMSE to set the drift threshold |
 
@@ -159,11 +157,10 @@ This file is consumed by the FastAPI `GET /drift-report` endpoint and displayed 
 |---|---|
 | `_rsi(series, period)` | Computes RSI — a momentum oscillator bounded 0–100 |
 | `_macd(series, a, b, c)` | Computes MACD line and signal line from three EMAs |
-| `build_features(prices)` | Builds the full 105-column feature matrix from raw closes |
+| `build_features(prices)` | Builds the full 25-column feature matrix from raw closes |
 | `_feature_cols(seq_len)` | Returns the ordered list of column names the model expects |
-| `_gru_seq(X_scaled, lookback)` | Reshapes the feature matrix into `(n, 20, 1)` GRU sequences |
 | `evaluate_recent(...)` | Runs the current model on the last 30 days and returns MAE |
-| `retrain(feat_df, ...)` | Trains a new GRU from scratch and returns model + scalers + RMSE |
+| `retrain(feat_df, ...)` | Trains a new RF from scratch and returns model + scalers + RMSE |
 | `main(force)` | Orchestrates all steps; writes drift report; entry point |
 | `_NullContext` | Dummy context manager used when MLflow is not installed |
 
@@ -174,7 +171,7 @@ This file is consumed by the FastAPI `GET /drift-report` endpoint and displayed 
 | File | Written when |
 |---|---|
 | `models/drift_report.json` | Every run |
-| `models/best_model.keras` | Retrain only |
+| `models/rf_model.save` | Retrain only |
 | `models/scaler_X.pkl` | Retrain only |
 | `models/scaler_y.pkl` | Retrain only |
 | `models/selection.json` | Retrain only (RMSE and timestamp updated) |
@@ -202,8 +199,7 @@ If `mlflow` is installed, each retrain run is logged to the `bitcoin-price-predi
 | Logged item | Value |
 |---|---|
 | Param: `trigger` | `"forced"` or `"drift detected"` |
-| Param: `lookback` | 20 |
-| Param: `seq_len` | 100 |
+| Param: `seq_len` | 20 |
 | Param: `eval_days` | 30 |
 | Metric: `pre_retrain_mae` | MAE before retraining (if model existed) |
 | Metric: `new_rmse` | RMSE of the newly trained model |

@@ -91,10 +91,10 @@ Built with Recharts `AreaChart`:
 
 Static display of model metadata read from `models/selection.json` at deploy time:
 
-- Type: `GRU(64) → Dense(1)`
-- Lookback window: 20 days
-- Feature set: 100 price lags · RSI-14 · MACD · std(30) · log-return
-- Test RMSE: ≈ $1,901
+- Type: `RandomForestRegressor(n_estimators=300)`
+- Feature window: 20-day lags + RSI-14 + MACD + std(30) + log-return
+- Feature count: 25
+- Test RMSE: ≈ $622
 - Target variable: Log-return (reconstructed to price)
 - Deployed on: Oracle Cloud VM · eu-frankfurt-1 · Always Free
 

@@ -1,6 +1,6 @@
 # Oracle Cloud Deployment — BTC Predictor API
 
-**Stack**: Docker · FastAPI · TensorFlow/Keras GRU  
+**Stack**: Docker · FastAPI · scikit-learn Random Forest  
 **Platform**: Oracle Cloud Infrastructure (OCI) — Always Free tier  
 **Instance**: VM.Standard.A1.Flex (ARM Ampere) — up to 4 OCPUs + 24 GB RAM, permanently free  
 **Image registry**: Docker Hub (`brunopulheze/btc-predictor`)
@@ -152,7 +152,7 @@ Expected:
 
 ```json
 { "status": "healthy" }
-{ "status": "ok", "model": "GRU", "lookback": 20 }
+{ "status": "ok", "model": "RF", "n_features": 25 }
 { "predicted_price": 75212.93, "previous_close": 75872.52, "last_data_date": "2026-04-22", "data_points": 4236 }
 ```
 
