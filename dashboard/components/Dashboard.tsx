@@ -199,7 +199,7 @@ export default function Dashboard({ prediction, driftReport, priceHistory, curre
           <div>
             <h1 className="btc-header__title">BTC Price Predictor</h1>
             <p className="btc-header__subtitle">
-              GRU Neural Network · Oracle Cloud · Daily Next-Day Forecast
+              Random Forest · Oracle Cloud · Daily Next-Day Forecast
             </p>
           </div>
         </div>
@@ -381,10 +381,10 @@ export default function Dashboard({ prediction, driftReport, priceHistory, curre
           <h2 className="btc-card__title">Model Architecture</h2>
           <div className="btc-model-grid">
             {[
-              ["Type", "GRU(64) → Dense(1)"],
-              ["Lookback window", "20 days"],
-              ["Feature set", "100 price lags · RSI-14 · MACD · std(30) · log-return"],
-              ["Test RMSE", "≈ $1,901"],
+              ["Type", "RandomForestRegressor(n_estimators=300)"],
+              ["Feature window", "20-day lags + RSI-14 + MACD + std(30)"],
+              ["Feature count", "25"],
+              ["Test RMSE", "≈ $622"],
               ["Target variable", "Log-return (reconstructed to price)"],
               ["Training data", prediction ? `${prediction.data_points.toLocaleString()} daily closes since 2014` : "Daily closes since 2014"],
               ["Deployed on", "Oracle Cloud VM · eu-frankfurt-1 · Always Free"],
@@ -453,7 +453,7 @@ export default function Dashboard({ prediction, driftReport, priceHistory, curre
       {/* ── Footer ── */}
       <footer className="btc-footer">
         <span>Price history: CoinGecko API</span>
-        <span>Predictions: GRU model · Oracle Cloud Infrastructure</span>
+        <span>Predictions: Random Forest model · Oracle Cloud Infrastructure</span>
         <span>Pipeline: GitHub Actions · Docker Hub · yfinance</span>
       </footer>
     </div>
