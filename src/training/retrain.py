@@ -344,15 +344,21 @@ def retrain(
         verbose=1,
     )
 
-    # Evaluate on the held-out test set in USD (after back-transforming predictions)
+    # Evaluate on the held-out test set
     scaled_preds = model.predict(X_test_seq, verbose=0).ravel()
     log_rets     = scaler_y.inverse_transform(scaled_preds.reshape(-1, 1)).ravel()  # un-standardise
     prev_closes  = feat_df["lag_1"].iloc[split:].values
     actual       = feat_df["Close"].iloc[split:].values
     predicted    = prev_closes * np.exp(log_rets)  # price[t] = close[t-1] × exp(log_return)
-    rmse         = float(np.sqrt(np.mean((predicted - actual) ** 2)))  # RMSE in USD
 
-    return model, scaler_X, scaler_y, rmse
+    # Price RMSE — kept only for retrain drift detection (not a skill metric)
+    rmse         = float(np.sqrt(np.mean((predicted - actual) ** 2)))
+
+    # Log-return RMSE — the honest skill metric
+    y_test_logret = y[split:]
+    logret_rmse   = float(np.sqrt(np.mean((y_test_logret - log_rets) ** 2)))
+
+    return model, scaler_X, scaler_y, rmse, logret_rmse
 
 
 # ── Main ───────────────────────────────────────────────────────────────
@@ -441,11 +447,13 @@ def main(force: bool = False) -> dict:
                 if recent_mae is not None:
                     mlflow.log_metric("pre_retrain_mae", recent_mae)
 
-            new_model, new_scaler_X, new_scaler_y, new_rmse = retrain(feat_df, lookback, seq_len)
-            print(f"\n  New test RMSE: ${new_rmse:>10,.2f}  (was ${baseline_rmse:,.2f})")
+            new_model, new_scaler_X, new_scaler_y, new_rmse, new_logret_rmse = retrain(feat_df, lookback, seq_len)
+            print(f"\n  New price RMSE:   ${new_rmse:>10,.2f}  (was ${baseline_rmse:,.2f})")
+            print(f"  New logret RMSE:  {new_logret_rmse:.5f}")
 
             if _MLFLOW:
-                mlflow.log_metric("new_rmse", new_rmse)
+                mlflow.log_metric("new_rmse",       new_rmse)
+                mlflow.log_metric("logret_rmse",    new_logret_rmse)
 
         # Save artifacts
         new_model.save(os.path.join(MODEL_DIR, "best_model.keras"))
@@ -453,14 +461,16 @@ def main(force: bool = False) -> dict:
         joblib.dump(new_scaler_y, os.path.join(MODEL_DIR, "scaler_y.pkl"))
 
         # Update selection.json
-        sel["rmse"]      = round(new_rmse, 2)
-        sel["retrained"] = datetime.datetime.utcnow().isoformat()
+        sel["rmse"]         = round(new_rmse, 2)
+        sel["logret_rmse"]  = round(new_logret_rmse, 5)
+        sel["retrained"]    = datetime.datetime.utcnow().isoformat()
         with open(SELECTION_FILE, "w") as f:
             json.dump(sel, f, indent=2)
         print("  Artifacts saved.")
 
-        report["retrained"] = True
-        report["new_rmse"]  = round(new_rmse, 2)
+        report["retrained"]    = True
+        report["new_rmse"]     = round(new_rmse, 2)
+        report["new_logret_rmse"] = round(new_logret_rmse, 5)
 
     # ── 6. Write drift report ─────────────────────────────────────────
     with open(REPORT_FILE, "w") as f:
