@@ -98,7 +98,7 @@ Then open http://localhost:5000 in your browser.
 | Preprocessing | MinMaxScaler on features, StandardScaler on log-return target, 70/30 train/test split |
 | Model | **GRU(64) + Dense(1)**, LOOKBACK=20 timesteps, Adam + MSE, EarlyStopping (patience=10) |
 | Tracking | MLflow logs parameters, RMSE, and artifacts |
-| Evaluation | Price reconstruction from predicted log-returns, RMSE ~$622 |
+| Evaluation | Price space RMSE + log-return space R² & directional accuracy, benchmarked against a persistence baseline — see [docs/honest-evaluation.md](docs/honest-evaluation.md) |
 
 ---
 
@@ -110,7 +110,8 @@ Then open http://localhost:5000 in your browser.
 | Lookback window | 20 days |
 | Feature set | 20 lag features + RSI-14 + MACD + MACD signal + rolling std(30) + yesterday's return |
 | Target | Log-return (rescaled back to price) |
-| Test RMSE | ~$622 |
+| Test RMSE | ~$622 (GRU) — near-equal to persistence baseline; see [docs/honest-evaluation.md](docs/honest-evaluation.md) |
+| Log-return R² | ≈ 0 (expected — consistent with EMH for daily BTC with price-only features) |
 
 ---
 
