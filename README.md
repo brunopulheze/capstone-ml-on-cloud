@@ -94,7 +94,7 @@ Then open http://localhost:5000 in your browser.
 | Step | Description |
 |------|-------------|
 | Data retrieval | Daily BTC/USD prices via `yfinance` from 2015 to today |
-| Feature engineering | 100-day lag window, RSI-14, MACD, 30-day rolling std, yesterday's return — all shifted by 1 day (leak-free) |
+| Feature engineering | 20-day lag window, RSI-14, MACD, 30-day rolling std, yesterday's return — all shifted by 1 day (leak-free) |
 | Preprocessing | MinMaxScaler on features, StandardScaler on log-return target, 70/30 train/test split |
 | Model | **GRU(64) + Dense(1)**, LOOKBACK=20 timesteps, Adam + MSE, EarlyStopping (patience=10) |
 | Tracking | MLflow logs parameters, RMSE, and artifacts |
@@ -108,7 +108,7 @@ Then open http://localhost:5000 in your browser.
 |-----------|-------|
 | Architecture | GRU(64) → Dense(1) |
 | Lookback window | 20 days |
-| Feature set | 100 lag features + RSI-14 + MACD + MACD signal + rolling std(30) + yesterday's return |
+| Feature set | 20 lag features + RSI-14 + MACD + MACD signal + rolling std(30) + yesterday's return |
 | Target | Log-return (rescaled back to price) |
 | Test RMSE | ~$622 |
 

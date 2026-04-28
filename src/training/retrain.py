@@ -51,7 +51,7 @@ SELECTION_FILE = os.path.join(MODEL_DIR, "selection.json")
 REPORT_FILE    = os.path.join(MODEL_DIR, "drift_report.json")
 
 # ── Hyper-parameters ───────────────────────────────────────────────────
-SEQ_LEN         = 100   # number of lag features
+SEQ_LEN         = 20    # number of lag features (= LOOKBACK — this script trains GRU only)
 LOOKBACK        = 20    # GRU sequence length
 EVAL_DAYS       = 30    # recent window for drift detection
 DRIFT_THRESHOLD = 1.5   # retrain if recent_MAE > threshold × baseline_RMSE
@@ -138,7 +138,7 @@ def build_features(prices: list[float], seq_len: int = SEQ_LEN) -> pd.DataFrame:
     prices : list[float]
         Raw daily BTC-USD closing prices, oldest first.
     seq_len : int
-        Number of lag features to generate. Default is SEQ_LEN (100).
+        Number of lag features to generate. Default is SEQ_LEN (20).
 
     Returns
     -------
@@ -169,14 +169,14 @@ def _feature_cols(seq_len: int = SEQ_LEN) -> list[str]:
     Parameters
     ----------
     seq_len : int
-        Number of lag features. Default is SEQ_LEN (100).
+        Number of lag features. Default is SEQ_LEN (20).
 
     Returns
     -------
     list[str]
         Column names in the order the model expects them.
     """
-    lag_cols   = [f"lag_{i}" for i in range(1, seq_len + 1)]  # lag_1, lag_2, …, lag_100
+    lag_cols   = [f"lag_{i}" for i in range(1, seq_len + 1)]  # lag_1, lag_2, …, lag_20
     extra_cols = ["std30", "rsi14", "macd", "macd_sig", "return"]  # technical indicators
     return lag_cols + extra_cols  # lags first — required by _gru_seq()
 
@@ -246,7 +246,7 @@ def evaluate_recent(
     lookback : int
         GRU sequence length. Default LOOKBACK (20).
     seq_len : int
-        Number of lag features. Default SEQ_LEN (100).
+        Number of lag features. Default SEQ_LEN (20).
     n : int
         Number of recent days to evaluate. Default EVAL_DAYS (30).
 
@@ -300,7 +300,7 @@ def retrain(
     lookback : int
         GRU sequence length (number of timesteps). Default LOOKBACK (20).
     seq_len : int
-        Number of lag features. Default SEQ_LEN (100).
+        Number of lag features. Default SEQ_LEN (20).
 
     Returns
     -------

@@ -10,7 +10,7 @@ POST /predict  {"prices": [<list of daily Close prices, oldest first>]}
   → {"predicted_price": <float>, "previous_close": <float>}
 
 The `prices` list must contain at least SEQ_LEN + 200 values so that all
-technical indicators (RSI-14, MACD-26, rolling-std-30, 100-day lags) can
+technical indicators (RSI-14, MACD-26, rolling-std-30, 20-day lags) can
 be computed without NaN rows after the warmup period.
 """
 from __future__ import annotations
@@ -43,7 +43,7 @@ _gru_model  = None
 _scaler_X   = None
 _scaler_y   = None
 _lookback   = 20
-_seq_len    = 100
+_seq_len    = 20
 
 
 # ── Feature engineering (mirrors the notebook) ───────────────────────
@@ -92,7 +92,7 @@ def startup():
     _lookback = sel.get("gru_lookback", 20)
     _seq_len  = len([k for k in sel.get("features", []) if k.startswith("lag_")])
     if _seq_len == 0:
-        _seq_len = 100
+        _seq_len = 20
 
     import tensorflow as tf
     model_path = os.path.join(MODEL_DIR, "best_model.keras")

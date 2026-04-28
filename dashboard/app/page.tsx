@@ -45,6 +45,20 @@ async function getDriftReport() {
   }
 }
 
+async function getCurrentPrice() {
+  try {
+    const res = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
+      { next: { revalidate: 300 } }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data.bitcoin?.usd as number) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function getPriceHistory() {
   try {
     const res = await fetch(
@@ -65,10 +79,11 @@ async function getPriceHistory() {
 // ── Page ───────────────────────────────────────────────────────────────
 
 export default async function Page() {
-  const [prediction, driftReport, priceHistory] = await Promise.all([
+  const [prediction, driftReport, priceHistory, currentPrice] = await Promise.all([
     getPrediction(),
     getDriftReport(),
     getPriceHistory(),
+    getCurrentPrice(),
   ]);
 
   return (
@@ -76,6 +91,7 @@ export default async function Page() {
       prediction={prediction}
       driftReport={driftReport}
       priceHistory={priceHistory}
+      currentPrice={currentPrice}
     />
   );
 }

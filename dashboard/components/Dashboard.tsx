@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts";
+import LivePriceCard from "./LivePriceCard";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -42,6 +43,7 @@ interface DashboardProps {
   prediction: PredictionData | null;
   driftReport: DriftReport | null;
   priceHistory: PricePoint[] | null;
+  currentPrice: number | null;
 }
 
 // ── Formatters ─────────────────────────────────────────────────────────
@@ -117,7 +119,7 @@ function PredictionDot({ cx, cy, payload }: DotProps) {
 
 // ── Main component ─────────────────────────────────────────────────────
 
-export default function Dashboard({ prediction, driftReport, priceHistory }: DashboardProps) {
+export default function Dashboard({ prediction, driftReport, priceHistory, currentPrice }: DashboardProps) {
   const pricePct =
     prediction
       ? ((prediction.predicted_price - prediction.previous_close) / prediction.previous_close) * 100
@@ -202,7 +204,10 @@ export default function Dashboard({ prediction, driftReport, priceHistory }: Das
           </div>
         </div>
         <div className="btc-header__right">
-          <span className="btc-badge btc-badge--live">● Live</span>
+          <span className="btc-badge btc-badge--live">
+            <span className="btc-live-dot" />
+            Live
+          </span>
           <span className="btc-timestamp">{now}</span>
         </div>
       </header>
@@ -229,6 +234,11 @@ export default function Dashboard({ prediction, driftReport, priceHistory }: Das
           )}
         </div>
 
+        <LivePriceCard
+          initialPrice={currentPrice}
+          previousClose={prediction?.previous_close ?? null}
+        />
+
         <div className="btc-card btc-card--stat">
           <p className="btc-card__label">Previous Close</p>
           <p className="btc-card__value">
@@ -242,9 +252,8 @@ export default function Dashboard({ prediction, driftReport, priceHistory }: Das
         <div className="btc-card btc-card--stat">
           <p className="btc-card__label">Predicted Change</p>
           <p
-            className={`btc-card__value ${
-              pricePct == null ? "" : isPositive ? "btc-card__value--up" : "btc-card__value--down"
-            }`}
+            className={`btc-card__value ${pricePct == null ? "" : isPositive ? "btc-card__value--up" : "btc-card__value--down"
+              }`}
           >
             {pricePct !== null ? fmtPct(pricePct) : "—"}
           </p>
@@ -253,14 +262,6 @@ export default function Dashboard({ prediction, driftReport, priceHistory }: Das
               ? fmtUSD(Math.abs(prediction.predicted_price - prediction.previous_close)) + " USD"
               : ""}
           </p>
-        </div>
-
-        <div className="btc-card btc-card--stat">
-          <p className="btc-card__label">Training Data Points</p>
-          <p className="btc-card__value">
-            {prediction ? prediction.data_points.toLocaleString() : "—"}
-          </p>
-          <p className="btc-card__meta">Daily closes since 2014</p>
         </div>
       </div>
 
@@ -297,7 +298,7 @@ export default function Dashboard({ prediction, driftReport, priceHistory }: Das
             >
               <defs>
                 <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="hsl(217,91%,60%)" stopOpacity={0.22} />
+                  <stop offset="5%" stopColor="hsl(217,91%,60%)" stopOpacity={0.22} />
                   <stop offset="95%" stopColor="hsl(217,91%,60%)" stopOpacity={0} />
                 </linearGradient>
               </defs>
@@ -385,6 +386,7 @@ export default function Dashboard({ prediction, driftReport, priceHistory }: Das
               ["Feature set", "100 price lags · RSI-14 · MACD · std(30) · log-return"],
               ["Test RMSE", "≈ $1,901"],
               ["Target variable", "Log-return (reconstructed to price)"],
+              ["Training data", prediction ? `${prediction.data_points.toLocaleString()} daily closes since 2014` : "Daily closes since 2014"],
               ["Deployed on", "Oracle Cloud VM · eu-frankfurt-1 · Always Free"],
             ].map(([label, value]) => (
               <div className="btc-model-item" key={label}>

@@ -21,7 +21,7 @@ python src/training/retrain.py --force
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │  1. Download BTC-USD history (yfinance, 2014 → today)            │
-│  2. Build feature matrix (105 features, same as app.py)          │
+│  2. Build feature matrix (25 features, same as app.py)          │
 │  3. Load existing model + scalers from models/                   │
 │     └─ If no model exists → cold start, skip to step 5           │
 │  4. Evaluate model on last 30 days → recent MAE                  │
@@ -47,11 +47,11 @@ Downloads the full price history from Yahoo Finance (~4 200 daily closes). Start
 
 ## Step 2 — Build features
 
-Calls `build_features(prices)`, which produces the same 105-column feature matrix used during training and inference in `app.py`. Every column is shifted by 1 day so no future information leaks into the features.
+Calls `build_features(prices)`, which produces the same 25-column feature matrix used during training and inference in `app.py`. Every column is shifted by 1 day so no future information leaks into the features.
 
 | Feature group | Columns | What it captures |
 |---|---|---|
-| Lag window | `lag_1` … `lag_100` | Raw closing prices for the previous 1–100 days |
+| Lag window | `lag_1` … `lag_20` | Raw closing prices for the previous 1–20 days |
 | Volatility | `std30` | 30-day rolling standard deviation |
 | Momentum | `rsi14` | Relative Strength Index (0–100) |
 | Trend | `macd`, `macd_sig` | MACD line and signal line |
@@ -85,8 +85,8 @@ The drift decision:
 
 ```
 drift = recent_MAE  >  DRIFT_THRESHOLD × baseline_RMSE
-                            1.5        ×    ~$1 901
-                    ≈ $2 851
+                            1.5        ×    ~$622
+                    ≈ $933
 ```
 
 | Result | Meaning |
@@ -146,7 +146,7 @@ This file is consumed by the FastAPI `GET /drift-report` endpoint and displayed 
 
 | Constant | Value | Meaning |
 |---|---|---|
-| `SEQ_LEN` | 100 | Number of lag features |
+| `SEQ_LEN` | 20 | Number of lag features |
 | `LOOKBACK` | 20 | GRU sequence length (days) |
 | `EVAL_DAYS` | 30 | Recent window used for drift detection |
 | `DRIFT_THRESHOLD` | 1.5 | Multiplier applied to baseline RMSE to set the drift threshold |
