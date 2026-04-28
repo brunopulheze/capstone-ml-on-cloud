@@ -1,13 +1,13 @@
 """
-BTC Price Predictor — FastAPI app (GRU model)
+BTC Price Predictor — FastAPI app (Random Forest model)
 
 GET  /predict/latest
-  → fetches live BTC-USD prices via yfinance, returns tomorrow's prediction
-      {"predicted_price": <float>, "previous_close": <float>,
-       "last_data_date": <str>, "data_points": <int>}
+    → fetches live BTC-USD prices via yfinance, returns tomorrow's prediction
+        {"predicted_price": <float>, "previous_close": <float>,
+        "last_data_date": <str>, "data_points": <int>}
 
 POST /predict  {"prices": [<list of daily Close prices, oldest first>]}
-  → {"predicted_price": <float>, "previous_close": <float>}
+    → {"predicted_price": <float>, "previous_close": <float>}
 
 The `prices` list must contain at least SEQ_LEN + 200 values so that all
 technical indicators (RSI-14, MACD-26, rolling-std-30, 20-day lags) can
@@ -25,7 +25,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-app = FastAPI(title="BTC Price Predictor — GRU")
+app = FastAPI(title="BTC Price Predictor — Random Forest")
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,10 +39,9 @@ MODEL_DIR      = os.getenv("MODEL_DIR", os.path.join(os.path.dirname(__file__), 
 SELECTION_FILE = os.path.join(MODEL_DIR, "selection.json")
 
 # ── Global state (populated at startup) ──────────────────────────────
-_gru_model  = None
+_rf_model   = None
 _scaler_X   = None
 _scaler_y   = None
-_lookback   = 20
 _seq_len    = 20
 
 
@@ -81,7 +80,7 @@ def _build_features(prices: list[float], seq_len: int) -> pd.DataFrame:
 # ── Startup ───────────────────────────────────────────────────────────
 @app.on_event("startup")
 def startup():
-    global _gru_model, _scaler_X, _scaler_y, _lookback, _seq_len
+    global _rf_model, _scaler_X, _scaler_y, _seq_len
 
     if not os.path.exists(SELECTION_FILE):
         raise RuntimeError(f"selection.json not found at {SELECTION_FILE}. Run the notebook first.")
@@ -89,16 +88,14 @@ def startup():
     with open(SELECTION_FILE) as f:
         sel = json.load(f)
 
-    _lookback = sel.get("gru_lookback", 20)
-    _seq_len  = len([k for k in sel.get("features", []) if k.startswith("lag_")])
+    _seq_len = len([k for k in sel.get("features", []) if k.startswith("lag_")])
     if _seq_len == 0:
         _seq_len = 20
 
-    import tensorflow as tf
-    model_path = os.path.join(MODEL_DIR, "best_model.keras")
+    model_path = os.path.join(MODEL_DIR, "rf_model.save")
     if not os.path.exists(model_path):
         raise RuntimeError(f"Model file not found: {model_path}")
-    _gru_model = tf.keras.models.load_model(model_path)
+    _rf_model = joblib.load(model_path)
 
     _scaler_X = joblib.load(os.path.join(MODEL_DIR, "scaler_X.pkl"))
     _scaler_y = joblib.load(os.path.join(MODEL_DIR, "scaler_y.pkl"))
@@ -107,7 +104,7 @@ def startup():
 # ── Endpoints ─────────────────────────────────────────────────────────
 @app.get("/")
 def root():
-    return {"status": "ok", "model": "GRU", "lookback": _lookback}
+    return {"status": "ok", "model": "RF", "n_features": _seq_len + 5}
 
 
 @app.get("/health")
@@ -140,11 +137,7 @@ def predict(payload: PredictRequest):
     row = feat_df[feature_cols].iloc[[-1]]
     row_s = _scaler_X.transform(row)
 
-    # Build GRU sequence: LOOKBACK timesteps of lag prices (oldest → newest)
-    gru_lag_idx = list(range(_lookback - 1, -1, -1))
-    seq = row_s[:, gru_lag_idx].reshape(1, _lookback, 1)
-
-    scaled_pred = _gru_model.predict(seq, verbose=0).ravel()
+    scaled_pred = _rf_model.predict(row_s).ravel()
     log_ret     = _scaler_y.inverse_transform(scaled_pred.reshape(-1, 1)).ravel()[0]
     prev_close  = float(feat_df["lag_1"].iloc[-1])
     predicted   = float(prev_close * np.exp(log_ret))
@@ -187,10 +180,7 @@ def predict_latest():
     row   = feat_df[feature_cols].iloc[[-1]]
     row_s = _scaler_X.transform(row)
 
-    gru_lag_idx = list(range(_lookback - 1, -1, -1))
-    seq = row_s[:, gru_lag_idx].reshape(1, _lookback, 1)
-
-    scaled_pred = _gru_model.predict(seq, verbose=0).ravel()
+    scaled_pred = _rf_model.predict(row_s).ravel()
     log_ret     = _scaler_y.inverse_transform(scaled_pred.reshape(-1, 1)).ravel()[0]
     prev_close  = float(feat_df["lag_1"].iloc[-1])
     predicted   = float(prev_close * np.exp(log_ret))
