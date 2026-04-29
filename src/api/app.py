@@ -92,7 +92,7 @@ def startup():
     if _seq_len == 0:
         _seq_len = 20
 
-    model_path = os.path.join(MODEL_DIR, "rf_model.save")
+    model_path = os.path.join(MODEL_DIR, "best_model.pkl")
     if not os.path.exists(model_path):
         raise RuntimeError(f"Model file not found: {model_path}")
     _rf_model = joblib.load(model_path)
