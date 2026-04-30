@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   AreaChart,
   Area,
@@ -43,6 +43,7 @@ interface DashboardProps {
   prediction: PredictionData | null;
   driftReport: DriftReport | null;
   priceHistory: PricePoint[] | null;
+  fullPriceHistory: PricePoint[] | null;
   currentPrice: number | null;
 }
 
@@ -119,7 +120,8 @@ function PredictionDot({ cx, cy, payload }: DotProps) {
 
 // ── Main component ─────────────────────────────────────────────────────
 
-export default function Dashboard({ prediction, driftReport, priceHistory, currentPrice }: DashboardProps) {
+export default function Dashboard({ prediction, driftReport, priceHistory, fullPriceHistory, currentPrice }: DashboardProps) {
+  const [activeTab, setActiveTab] = useState<"60d" | "full">("60d");
   const pricePct =
     prediction
       ? ((prediction.predicted_price - prediction.previous_close) / prediction.previous_close) * 100
@@ -157,15 +159,35 @@ export default function Dashboard({ prediction, driftReport, priceHistory, curre
     return result;
   }, [priceHistory, prediction]);
 
+  // Build full history chart data
+  const fullChartData = useMemo(() => {
+    if (!fullPriceHistory) return [];
+    if (!prediction) {
+      return fullPriceHistory.map((h) => ({ date: h.date, price: h.price, predicted: null as number | null }));
+    }
+    const lastDate = new Date(prediction.last_data_date + "T00:00:00Z");
+    lastDate.setUTCDate(lastDate.getUTCDate() + 1);
+    const tomorrowStr = lastDate.toISOString().split("T")[0];
+    const result = fullPriceHistory.map((h, i) => ({
+      date: h.date,
+      price: h.price,
+      predicted: i === fullPriceHistory.length - 1 ? (h.price as number | null) : (null as number | null),
+    }));
+    result.push({ date: tomorrowStr, price: null as unknown as number, predicted: Math.round(prediction.predicted_price) });
+    return result;
+  }, [fullPriceHistory, prediction]);
+
+  const activeChartData = activeTab === "60d" ? chartData : fullChartData;
+
   const [minPrice, maxPrice] = useMemo(() => {
-    if (!chartData.length) return [0, "auto"] as [number, string];
-    const vals = chartData.flatMap((d) =>
+    if (!activeChartData.length) return [0, "auto"] as [number, string];
+    const vals = activeChartData.flatMap((d) =>
       [d.price, d.predicted].filter((v): v is number => v != null)
     );
     const min = Math.min(...vals) * 0.96;
     const max = Math.max(...vals) * 1.02;
     return [min, max] as [number, number];
-  }, [chartData]);
+  }, [activeChartData]);
 
   const now = new Date().toLocaleString("en-US", {
     month: "short",
@@ -268,9 +290,27 @@ export default function Dashboard({ prediction, driftReport, priceHistory, curre
       {/* ── Price chart ── */}
       <div className="btc-card btc-card--chart">
         <div className="btc-chart-header">
-          <h2 className="btc-card__title" style={{ marginBottom: 0 }}>
-            BTC/USD — 60-Day History &amp; Next-Day Prediction
-          </h2>
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+            <h2 className="btc-card__title" style={{ marginBottom: 0 }}>
+              {activeTab === "60d"
+                ? "BTC/USD — 60-Day History & Next-Day Prediction"
+                : "BTC/USD — Full Price History (Sep 2014 – Today) & Next-Day Prediction"}
+            </h2>
+            <div className="btc-tabs">
+              <button
+                className={`btc-tab ${activeTab === "60d" ? "btc-tab--active" : ""}`}
+                onClick={() => setActiveTab("60d")}
+              >
+                60-Day
+              </button>
+              <button
+                className={`btc-tab ${activeTab === "full" ? "btc-tab--active" : ""}`}
+                onClick={() => setActiveTab("full")}
+              >
+                Full History
+              </button>
+            </div>
+          </div>
           <div className="btc-chart-legend">
             <span className="btc-legend-item btc-legend-item--actual">
               <svg width="20" height="3" viewBox="0 0 20 3" aria-hidden="true">
@@ -290,10 +330,10 @@ export default function Dashboard({ prediction, driftReport, priceHistory, curre
           </div>
         </div>
 
-        {chartData.length > 0 ? (
+        {activeChartData.length > 0 ? (
           <ResponsiveContainer width="100%" height={340}>
             <AreaChart
-              data={chartData}
+              data={activeChartData}
               margin={{ top: 12, right: 16, left: 4, bottom: 0 }}
             >
               <defs>
@@ -310,8 +350,12 @@ export default function Dashboard({ prediction, driftReport, priceHistory, curre
                 tick={{ fontSize: 11, fill: "hsl(244,16%,52%)" }}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(v: string) => fmtDate(v)}
-                interval={Math.floor(chartData.length / 7)}
+                tickFormatter={(v: string) =>
+                  activeTab === "full"
+                    ? new Date(v + "T00:00:00Z").getFullYear().toString()
+                    : fmtDate(v)
+                }
+                interval={Math.floor(activeChartData.length / 7)}
               />
 
               <YAxis
@@ -367,7 +411,7 @@ export default function Dashboard({ prediction, driftReport, priceHistory, curre
           </ResponsiveContainer>
         ) : (
           <div className="btc-chart-empty">
-            {priceHistory === null
+            {(activeTab === "60d" ? priceHistory : fullPriceHistory) === null
               ? "Price history unavailable — CoinGecko API may be rate-limited. Refresh in a moment."
               : "No chart data to display."}
           </div>

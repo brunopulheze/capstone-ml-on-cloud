@@ -356,6 +356,38 @@ body {
   gap: 0.5rem;
 }
 
+/* ── Chart tabs ─────────────────────────────────────────────────────── */
+.btc-tabs {
+  display: flex;
+  gap: 0.25rem;
+  background: hsl(244, 20%, 94%);
+  border-radius: 8px;
+  padding: 0.2rem;
+}
+
+.btc-tab {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 0.25rem 0.75rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  background: transparent;
+  color: hsl(244, 16%, 52%);
+  transition: background 0.15s, color 0.15s;
+}
+
+.btc-tab:hover {
+  background: hsl(244, 20%, 88%);
+  color: hsl(244, 16%, 30%);
+}
+
+.btc-tab--active {
+  background: var(--container-color);
+  color: var(--first-color);
+  box-shadow: 0 1px 3px hsla(244, 20%, 30%, 0.12);
+}
+
 .btc-chart-legend {
   display: flex;
   gap: 1.25rem;

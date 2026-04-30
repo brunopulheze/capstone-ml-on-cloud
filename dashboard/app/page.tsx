@@ -76,13 +76,26 @@ async function getPriceHistory() {
   }
 }
 
+async function getFullPriceHistory() {
+  try {
+    const res = await fetch(`${API_BASE}/history`, {
+      next: { revalidate: 86400 },
+    });
+    if (!res.ok) return null;
+    return res.json() as Promise<{ date: string; price: number }[]>;
+  } catch {
+    return null;
+  }
+}
+
 // ── Page ───────────────────────────────────────────────────────────────
 
 export default async function Page() {
-  const [prediction, driftReport, priceHistory, currentPrice] = await Promise.all([
+  const [prediction, driftReport, priceHistory, fullPriceHistory, currentPrice] = await Promise.all([
     getPrediction(),
     getDriftReport(),
     getPriceHistory(),
+    getFullPriceHistory(),
     getCurrentPrice(),
   ]);
 
@@ -91,6 +104,7 @@ export default async function Page() {
       prediction={prediction}
       driftReport={driftReport}
       priceHistory={priceHistory}
+      fullPriceHistory={fullPriceHistory}
       currentPrice={currentPrice}
     />
   );
