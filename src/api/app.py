@@ -205,3 +205,25 @@ def drift_report():
         data = json.load(f)
     data["available"] = True
     return data
+
+
+@app.get("/history")
+def price_history():
+    """Return full BTC-USD daily closing price history from 2014 to today."""
+    try:
+        import yfinance as yf
+    except ImportError:
+        raise HTTPException(status_code=500, detail="yfinance not installed.")
+
+    df = yf.download("BTC-USD", start="2014-01-01", progress=False, auto_adjust=True)
+    if df.empty:
+        raise HTTPException(status_code=503, detail="Failed to fetch BTC-USD data.")
+
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    closes = df["Close"].dropna()
+    return [
+        {"date": str(idx.date()), "price": round(float(val), 2)}
+        for idx, val in closes.items()
+    ]
