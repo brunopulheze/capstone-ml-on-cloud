@@ -1,7 +1,7 @@
 {
   "model_type": "gru",
   "model_path": "c:\\Users\\User\\Desktop\\Ironhack-DS-AI\\capstone-ml-on-cloud\\models\\best_model.keras",
-  "rmse": 621.57,
+  "rmse": 1865.79,
   "features": [
     "lag_1",
     "lag_2",
@@ -109,5 +109,7 @@
     "macd_sig",
     "return"
   ],
-  "gru_lookback": 20
+  "gru_lookback": 20,
+  "logret_rmse": 0.02785,
+  "retrained": "2026-04-30T07:58:37.535359"
 }
