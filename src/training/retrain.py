@@ -327,10 +327,10 @@ def main(force: bool = False) -> dict:
             sel = json.load(f)
 
     baseline_rmse = float(sel.get("rmse", 1901.0))
-    seq_len       = len([k for k in sel.get("features", []) if k.startswith("lag_")]) or SEQ_LEN
+    seq_len       = SEQ_LEN  # always use the hardcoded RF lag count, not the GRU features in selection.json
 
     # ── 4. Drift detection (skipped on cold start) ────────────────
-    model_path = os.path.join(MODEL_DIR, "rf_model.save")
+    model_path = os.path.join(MODEL_DIR, "best_model.pkl")
     cold_start = not os.path.exists(model_path)
 
     if cold_start:
@@ -396,7 +396,7 @@ def main(force: bool = False) -> dict:
                 mlflow.log_metric("logret_rmse",    new_logret_rmse)
 
         # Save artifacts
-        joblib.dump(new_model, os.path.join(MODEL_DIR, "rf_model.save"))
+        joblib.dump(new_model, os.path.join(MODEL_DIR, "best_model.pkl"))
         joblib.dump(new_scaler_X, os.path.join(MODEL_DIR, "scaler_X.pkl"))
         joblib.dump(new_scaler_y, os.path.join(MODEL_DIR, "scaler_y.pkl"))
 
