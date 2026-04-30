@@ -88,17 +88,15 @@ def startup():
     with open(SELECTION_FILE) as f:
         sel = json.load(f)
 
-    _seq_len = len([k for k in sel.get("features", []) if k.startswith("lag_")])
-    if _seq_len == 0:
-        _seq_len = 20
+    _seq_len = 20  # RF model always uses SEQ_LEN=20 lag features
 
-    model_path = os.path.join(MODEL_DIR, "best_model.pkl")
+    model_path = os.path.join(MODEL_DIR, "rf_model.pkl")
     if not os.path.exists(model_path):
         raise RuntimeError(f"Model file not found: {model_path}")
     _rf_model = joblib.load(model_path)
 
-    _scaler_X = joblib.load(os.path.join(MODEL_DIR, "scaler_X.pkl"))
-    _scaler_y = joblib.load(os.path.join(MODEL_DIR, "scaler_y.pkl"))
+    _scaler_X = joblib.load(os.path.join(MODEL_DIR, "rf_scaler_X.pkl"))
+    _scaler_y = joblib.load(os.path.join(MODEL_DIR, "rf_scaler_y.pkl"))
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────

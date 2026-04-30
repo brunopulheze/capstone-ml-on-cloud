@@ -330,7 +330,7 @@ def main(force: bool = False) -> dict:
     seq_len       = SEQ_LEN  # always use the hardcoded RF lag count, not the GRU features in selection.json
 
     # ── 4. Drift detection (skipped on cold start) ────────────────
-    model_path = os.path.join(MODEL_DIR, "best_model.pkl")
+    model_path = os.path.join(MODEL_DIR, "rf_model.pkl")
     cold_start = not os.path.exists(model_path)
 
     if cold_start:
@@ -340,8 +340,8 @@ def main(force: bool = False) -> dict:
         force = True   # always train when no model exists
     else:
         model    = joblib.load(model_path)
-        scaler_X = joblib.load(os.path.join(MODEL_DIR, "scaler_X.pkl"))
-        scaler_y = joblib.load(os.path.join(MODEL_DIR, "scaler_y.pkl"))
+        scaler_X = joblib.load(os.path.join(MODEL_DIR, "rf_scaler_X.pkl"))
+        scaler_y = joblib.load(os.path.join(MODEL_DIR, "rf_scaler_y.pkl"))
 
         print(f"\nEvaluating last {EVAL_DAYS} days...")
         recent_mae, _ = evaluate_recent(feat_df, model, scaler_X, scaler_y, seq_len)
@@ -396,9 +396,9 @@ def main(force: bool = False) -> dict:
                 mlflow.log_metric("logret_rmse",    new_logret_rmse)
 
         # Save artifacts
-        joblib.dump(new_model, os.path.join(MODEL_DIR, "best_model.pkl"))
-        joblib.dump(new_scaler_X, os.path.join(MODEL_DIR, "scaler_X.pkl"))
-        joblib.dump(new_scaler_y, os.path.join(MODEL_DIR, "scaler_y.pkl"))
+        joblib.dump(new_model, os.path.join(MODEL_DIR, "rf_model.pkl"))
+        joblib.dump(new_scaler_X, os.path.join(MODEL_DIR, "rf_scaler_X.pkl"))
+        joblib.dump(new_scaler_y, os.path.join(MODEL_DIR, "rf_scaler_y.pkl"))
 
         # Update selection.json
         sel["rmse"]         = round(new_rmse, 2)
