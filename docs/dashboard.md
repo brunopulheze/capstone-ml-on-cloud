@@ -94,7 +94,7 @@ Static display of model metadata read from `models/selection.json` at deploy tim
 - Type: `RandomForestRegressor(n_estimators=300)`
 - Feature window: 20-day lags + RSI-14 + MACD + std(30) + log-return
 - Feature count: 25
-- Test RMSE: ≈ $622
+- Test RMSE: ≈ $1,918
 - Target variable: Log-return (reconstructed to price)
 - Deployed on: Oracle Cloud VM · eu-frankfurt-1 · Always Free
 
