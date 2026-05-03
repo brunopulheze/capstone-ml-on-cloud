@@ -428,7 +428,7 @@ export default function Dashboard({ prediction, driftReport, priceHistory, fullP
               ["Type", "RandomForestRegressor(n_estimators=300)"],
               ["Feature window", "20-day lags + RSI-14 + MACD + std(30)"],
               ["Feature count", "25"],
-              ["Test RMSE", "≈ $1,918"],
+              ["Test RMSE", driftReport?.baseline_rmse != null ? `≈ ${fmtUSD(driftReport.baseline_rmse)}` : "≈ $1,918"],
               ["Target variable", "Log-return (reconstructed to price)"],
               ["Training data", prediction ? `${prediction.data_points.toLocaleString()} daily closes since 2014` : "Daily closes since 2014"],
               ["Deployed on", "Oracle Cloud VM · eu-frankfurt-1 · Always Free"],
