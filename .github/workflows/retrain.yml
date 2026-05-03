@@ -57,6 +57,16 @@ jobs:
           name: drift-report-${{ github.run_id }}
           path: models/drift_report.json
 
+      # ── Always commit drift_report.json so the repo stays current ────
+
+      - name: Commit drift report
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f models/drift_report.json
+          git diff --cached --quiet || git commit -m "chore: update drift report [skip ci] $(date -u +%Y-%m-%d)"
+          git push
+
       # ── Steps below only run when the model was actually retrained ───
 
       - name: Commit updated model artifacts
@@ -64,8 +74,8 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f models/rf_model.pkl models/rf_scaler_X.pkl models/rf_scaler_y.pkl models/selection.json models/drift_report.json
-          git commit -m "chore: retrain RF model [skip ci] $(date -u +%Y-%m-%d)"
+          git add -f models/rf_model.save models/scaler_X.pkl models/scaler_y.pkl models/selection.json
+          git diff --cached --quiet || git commit -m "chore: retrain RF model [skip ci] $(date -u +%Y-%m-%d)"
           git push
 
       - name: Log in to Docker Hub
@@ -101,3 +111,25 @@ jobs:
               -e MODEL_DIR=/app/models \
               brunopulheze/btc-predictor:latest
             echo "Redeployed at $(date -u)"
+
+      # ── Always push the fresh drift report into the running container ─
+      # Runs after any potential full redeploy so it is never overwritten.
+
+      - name: Copy drift report to Oracle Cloud VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host:     ${{ secrets.OCI_HOST }}
+          username: ubuntu
+          key:      ${{ secrets.OCI_SSH_KEY }}
+          source:   "models/drift_report.json"
+          target:   "/home/ubuntu/"
+
+      - name: Inject drift report into running container
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.OCI_HOST }}
+          username: ubuntu
+          key:      ${{ secrets.OCI_SSH_KEY }}
+          script: |
+            docker cp /home/ubuntu/models/drift_report.json btc-predictor:/app/models/drift_report.json
+            echo "Drift report updated at $(date -u)"
