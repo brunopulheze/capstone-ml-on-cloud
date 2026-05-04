@@ -1,8 +1,8 @@
 {
   "model_type": "rf",
   "model_path": "c:\\Users\\User\\Desktop\\Ironhack-DS-AI\\capstone-ml-on-cloud\\models\\rf_model.save",
-  "logret_rmse": 0.02787,
-  "rmse": 1917.52,
+  "logret_rmse": 0.02821,
+  "rmse": 1910.71,
   "persistence_rmse": 1716.76,
   "features": [
     "lag_1",
@@ -31,5 +31,6 @@
     "macd_sig",
     "return"
   ],
-  "n_estimators": 300
+  "n_estimators": 300,
+  "retrained": "2026-05-04T06:54:04.861870"
 }
