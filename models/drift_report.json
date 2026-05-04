@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-04-30T07:58:28.575629",
+  "timestamp": "2026-05-04T06:53:55.720749",
   "eval_days": 30,
   "recent_mae": null,
-  "baseline_rmse": 621.57,
-  "drift_threshold": 932.36,
+  "baseline_rmse": 1917.52,
+  "drift_threshold": 2876.28,
   "drift_detected": false,
   "retrained": true,
-  "new_rmse": 1865.79,
-  "new_logret_rmse": 0.02785
+  "new_rmse": 1910.71,
+  "new_logret_rmse": 0.02821
 }
