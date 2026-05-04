@@ -2,13 +2,13 @@
 
 ## Overview
 
-End-to-end machine learning project that predicts daily **Bitcoin/USD (BTC-USD)** closing prices using a **GRU (Gated Recurrent Unit)** neural network. Experiment tracking is handled by MLflow. The model is served as a REST API, containerised with Docker, and deployed on **Oracle Cloud Infrastructure**.
+End-to-end machine learning project that predicts daily **Bitcoin/USD (BTC-USD)** closing prices using a **Random Forest** model trained on log-returns. Experiment tracking is handled by MLflow. The model is served as a REST API, containerised with Docker, and deployed on **Oracle Cloud Infrastructure**.
 
 **Live API**: http://138.2.180.250:8080
 
 ```
 GET  /health          → {"status": "healthy"}
-GET  /                → {"status": "ok", "model": "GRU", "lookback": 20}
+GET  /                → {"status": "ok", "model": "rf"}
 GET  /predict/latest  → autonomous prediction (fetches BTC prices via yfinance)
 POST /predict         → prediction from a user-supplied price list
 ```
@@ -79,7 +79,7 @@ python -m pip install -r requirements.txt
 ```
 
 ### 4. Run the notebooks
-Open `notebooks/02-bitcoin-price-prediction.ipynb` in VS Code or Jupyter and run all cells. This trains the GRU and saves model artifacts to `models/`. Use `notebooks/01-compare-models.ipynb` to compare LR, RF, LSTM, and GRU models.
+Open `notebooks/01-compare-models.ipynb` in VS Code or Jupyter and run all cells. This trains and compares RF, XGBoost, and GRU models, selects the best (Random Forest), and saves artifacts to `models/`. Use `notebooks/02-bitcoin-price-prediction.ipynb` for deeper EDA and feature exploration.
 
 ### 5. View MLflow experiments
 ```powershell
@@ -96,9 +96,9 @@ Then open http://localhost:5000 in your browser.
 | Data retrieval | Daily BTC/USD prices via `yfinance` from 2015 to today |
 | Feature engineering | 20-day lag window, RSI-14, MACD, 30-day rolling std, yesterday's return — all shifted by 1 day (leak-free) |
 | Preprocessing | MinMaxScaler on features, StandardScaler on log-return target, 70/30 train/test split |
-| Model | **GRU(64) + Dense(1)**, LOOKBACK=20 timesteps, Adam + MSE, EarlyStopping (patience=10) |
+| Model | **RandomForestRegressor(n_estimators=300)** trained on log-returns |
 | Tracking | MLflow logs parameters, RMSE, and artifacts |
-| Evaluation | Price space RMSE + log-return space R² & directional accuracy, benchmarked against a persistence baseline — see [docs/honest-evaluation.md](docs/honest-evaluation.md) |
+| Evaluation | Price space RMSE + log-return space R² & directional accuracy, benchmarked against a persistence baseline |
 
 ---
 
@@ -106,11 +106,10 @@ Then open http://localhost:5000 in your browser.
 
 | Parameter | Value |
 |-----------|-------|
-| Architecture | GRU(64) → Dense(1) |
-| Lookback window | 20 days |
-| Feature set | 20 lag features + RSI-14 + MACD + MACD signal + rolling std(30) + yesterday's return |
-| Target | Log-return (rescaled back to price) |
-| Test RMSE | ~$622 (GRU) — near-equal to persistence baseline; see [docs/honest-evaluation.md](docs/honest-evaluation.md) |
+| Architecture | RandomForestRegressor(n_estimators=300, random_state=42, n_jobs=-1) |
+| Feature set | 20-day lag window + RSI-14 + MACD + MACD signal + rolling std(30) + yesterday's return (25 features total) |
+| Target | Log-return `log(close[t]/close[t-1])` — reconstructed to price at serving time |
+| Test RMSE | ~$1,910 (price space, holdout test set) |
 | Log-return R² | ≈ 0 (expected — consistent with EMH for daily BTC with price-only features) |
 
 ---
@@ -156,7 +155,7 @@ python tests/smoke_test.py --url http://138.2.180.250:8080
 
 ## Deployment
 
-The Docker image `brunopulheze/btc-predictor:latest` is hosted on Docker Hub and deployed on **Oracle Cloud Infrastructure** — an Always Free `VM.Standard.E2.1.Micro` instance in Frankfurt (`eu-frankfurt-1`).
+The Docker image `brunopulheze/btc-predictor:latest` is hosted on Docker Hub and deployed on **Oracle Cloud Infrastructure** — an Always Free `VM.Standard.A1.Flex` ARM instance in Frankfurt (`eu-frankfurt-1`).
 
 | Guide | Platform | URL |
 |-------|----------|-----|
@@ -168,9 +167,9 @@ The Docker image `brunopulheze/btc-predictor:latest` is hosted on Docker Hub and
 
 See `requirements.txt`. Key libraries:
 
-- `tensorflow==2.21.0` + `keras==3.14.0` — GRU model (requires Python ≥ 3.11)
-- `scikit-learn` — preprocessing and metrics
+- `scikit-learn` — Random Forest model, preprocessing and metrics
 - `yfinance` — Bitcoin price data
-- `mlflow` — experiment tracking
+- `mlflow` — experiment tracking (local, optional)
 - `fastapi` + `uvicorn` — inference API
-- `joblib` — scaler serialisation
+- `joblib` — model and scaler serialisation
+- `tensorflow` + `keras` — used in notebooks for GRU comparison only, not in production

@@ -1,5 +1,122 @@
 # Automated Retraining Pipeline — `src/training/retrain.py`
 
+## How the pipeline reaches production — end to end
+
+```
+Developer machine
+│
+│  git push → github.com/brunopulheze/capstone-ml-on-cloud
+│              (pushes .github/workflows/retrain.yml)
+│
+└─► GitHub Actions receives the workflow file and registers two triggers:
+    ├── schedule: cron '0 6 * * *'   (every day at 06:00 UTC)
+    └── workflow_dispatch            (manual "Run workflow" button)
+
+When a trigger fires, GitHub spins up a fresh Ubuntu VM (the "runner"):
+
+  GHA Ubuntu runner
+  │
+  ├── 1. git checkout main          (clones repo, including models/)
+  ├── 2. pip install -r requirements.txt
+  ├── 3. python src/training/retrain.py
+  │        ├── downloads BTC-USD history (yfinance)
+  │        ├── loads rf_model.save from models/
+  │        ├── evaluates recent MAE → drift decision
+  │        └── if drift (or forced): retrains RF, saves new model files
+  │
+  ├── 4. git commit models/drift_report.json  (always)
+  ├── 5. git commit models/rf_model.save + scalers + selection.json
+  │        (only if retrained)
+  └── 6. git push → github.com (commits land in the repo)
+
+  GHA then copies artifacts to the Oracle Cloud VM (OCI VM):
+
+  ├── 7. scp models/drift_report.json → ubuntu@138.2.180.250:/home/ubuntu/
+  └── 8. ssh: docker cp /home/ubuntu/models/drift_report.json
+                  btc-predictor:/app/models/drift_report.json
+
+  Oracle Cloud VM (138.2.180.250) — always-free ARM instance
+  └── Docker container: btc-predictor
+      └── FastAPI app.py
+          ├── GET /drift-report  → reads updated drift_report.json
+          └── GET /predict/latest → uses rf_model.save loaded at startup
+              (model reloaded on next container restart after a retrain)
+```
+
+The dashboard (Vercel, Next.js) polls `/drift-report` every 30 minutes via ISR and displays the latest metrics without any manual intervention.
+
+---
+
+## Division of responsibilities
+
+Retraining takes place entirely in GitHub Actions — the OCI VM has one job only: serve predictions in real time.
+
+| Concern | Where |
+|---|---|
+| Download data | GHA runner |
+| Retrain model | GHA runner |
+| Commit new model to git | GHA runner |
+| Push `drift_report.json` to OCI | GHA runner (via scp) |
+| Serve `GET /predict/latest` | OCI VM |
+| Serve `GET /drift-report` | OCI VM |
+| Serve `POST /predict` | OCI VM |
+| Run 24/7 | OCI VM |
+
+```mermaid
+flowchart LR
+    DEV([Developer machine]) -->|git push| GH[(GitHub repo)]
+    GH -->|cron 06:00 UTC\nor manual trigger| GHA
+
+    subgraph GHA [GitHub Actions runner - ephemeral]
+        direction LR
+        A[1. git checkout main] --> B[2. pip install]
+        B --> C[3. retrain.py]
+        C --> D{Drift\ndetected?}
+        D -->|No| E[Write\ndrift_report.json]
+        D -->|Yes / forced| F[Retrain RF]
+        F --> G[Save model\nartifacts]
+        G --> E
+        E --> H[git commit\n+ push]
+        F --> I[git commit\nmodel artifacts]
+        I --> J[Build + push\nDocker image]
+    end
+
+    H -->|scp| CP[docker cp\ndrift_report.json]
+    J -->|docker pull| RESTART[docker stop + rm\ndocker run]
+
+    subgraph OCI [Oracle Cloud VM - persistent 24/7]
+        direction LR
+        RESTART --> CONTAINER
+        CP --> CONTAINER
+
+        subgraph CONTAINER [btc-predictor container]
+            API[FastAPI app.py\nrf_model.save in memory]
+        end
+    end
+
+    DASHBOARD([Vercel\nDashboard]) -->|GET /drift-report\nGET /predict/latest| API
+```
+
+The key distinction: **GHA is ephemeral** — it spins up for a few minutes once a day, does its work, then disappears. The **OCI VM is persistent** — it runs the FastAPI Docker container continuously, always reachable at `138.2.180.250:8080`, answering prediction requests from the dashboard at any time of day.
+
+---
+
+## Why retraining runs on GHA and not on the OCI VM
+
+It would be technically possible to SSH into the OCI VM and run `retrain.py` directly there, but GHA is the better choice for a production pipeline:
+
+| Concern | GHA | OCI VM only |
+|---|---|---|
+| Scheduling | Automatic cron — no manual intervention | Would need a cron job configured on the VM |
+| Compute | Fresh isolated Ubuntu VM, no resource contention | Shares CPU/RAM with the live API serving traffic |
+| Audit trail | Every run committed to git, visible in the Actions tab | Nothing logged unless done manually |
+| Model versioning | `rf_model.save` committed to git after each run — recoverable | Lost if the VM is destroyed, reset, or reprovisioned |
+| ARM compatibility | GHA runner is x86 — Docker image built as multi-arch | Runs natively on ARM, but model files would never sync back to git or the Docker image |
+
+The ARM point is a hard constraint: the OCI VM is `aarch64` (ARM) while GHA runners are x86. If retraining ran on the OCI VM, the new model files would live only on that machine and the Docker image would be permanently out of sync with the git repo — breaking reproducibility and disaster recovery.
+
+---
+
 ## Purpose
 
 `retrain.py` runs every day via GitHub Actions (06:00 UTC). Its job is to check whether the deployed Random Forest model has become less accurate on recent BTC prices — a phenomenon called **model drift** — and retrain it from scratch if needed.
@@ -85,8 +202,8 @@ The drift decision:
 
 ```
 drift = recent_MAE  >  DRIFT_THRESHOLD × baseline_RMSE
-                            1.5        ×    ~$622
-                    ≈ $933
+                            1.5        ×    ~$1,918
+                    ≈ $2,877
 ```
 
 | Result | Meaning |
@@ -188,7 +305,7 @@ The pipeline is wired to `.github/workflows/retrain.yml`:
 4. Reads `drift_report.json` to decide whether downstream steps should run
 5. If `retrained = true`: commits updated artifacts → builds and pushes a new Docker image → redeploys on Oracle Cloud
 
-See [`deploy-ec2.md`](../deploy-ec2.md) for the full deployment guide.
+See [`deploy-oracle.md`](deploy-oracle.md) for the full deployment guide.
 
 ---
 

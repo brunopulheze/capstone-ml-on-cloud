@@ -13,6 +13,10 @@ The project covers the full MLOps cycle — data collection, feature engineering
 
 The asset chosen was Bitcoin/USD. While the original brief described Gold/USD on AWS, the core requirements are identical: a financial time series, a deployed prediction endpoint, MLOps automation, and a CI/CD pipeline. Oracle Cloud's Always Free tier was used instead of AWS, which provides a permanently free ARM virtual machine with enough compute for this workload.
 
+People buy Bitcoin for a variety of reasons. Some treat it as a speculative asset, hoping to profit from its well-documented price swings. Others hold it as a hedge against inflation or currency devaluation, drawn by its fixed supply cap of 21 million coins. A smaller group uses it for its original purpose: a decentralised, permissionless means of transferring value without relying on banks or governments. Institutional investors have more recently added it to portfolios as an uncorrelated asset. All of these motivations create a deep, liquid, 24/7 market — making Bitcoin an ideal candidate for time-series forecasting research.
+
+
+
 ---
 
 ## 1. The Problem with Predicting Prices Directly
