@@ -89,6 +89,85 @@ Then open http://localhost:5000 in your browser.
 
 ---
 
+## How It All Fits Together
+
+The project has three distinct phases — **model selection** (done once, locally), **initial deployment** (done once, manually), and **daily automated retraining** (ongoing, fully automated).
+
+```
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  PHASE 1 — Model Selection (local, one-time)                                ║
+║                                                                              ║
+║  notebooks/01-compare-models.ipynb                                           ║
+║  ├─ Download BTC-USD history (yfinance)                                      ║
+║  ├─ Engineer 25 features (lags, RSI, MACD, std30, return)                    ║
+║  ├─ Train & evaluate: LinearRegression / RandomForest / XGBoost / GRU        ║
+║  ├─ Track experiments with MLflow (local SQLite)                             ║
+║  └─ Save winner → models/rf_model.save + scaler_X.pkl + scaler_y.pkl        ║
+║                           │                                                  ║
+╚═══════════════════════════╪══════════════════════════════════════════════════╝
+                            │
+                            ▼
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  PHASE 2 — Initial Deployment (local → cloud, one-time)                     ║
+║                                                                              ║
+║  docker build -t brunopulheze/btc-predictor:latest .                        ║
+║      └─ Dockerfile: COPY models/ /app/models/   ← model baked into image    ║
+║  docker push brunopulheze/btc-predictor:latest  → Docker Hub                ║
+║                                                                              ║
+║  SSH → OCI VM (VM.Standard.A1.Flex, ARM, Frankfurt)                         ║
+║      docker pull brunopulheze/btc-predictor:latest                          ║
+║      docker run -d -p 8080:8080 --name btc-predictor ...                    ║
+║      └─ FastAPI serves /predict/latest, /drift-report, /health              ║
+║                                                                              ║
+║  Vercel: auto-deploys dashboard/ on every push to main                      ║
+║      └─ Next.js dashboard calls OCI API every 30 min (ISR)                  ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+                            │
+                            ▼ (every day at 06:00 UTC)
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  PHASE 3 — Daily Automated Retraining (GitHub Actions, ephemeral runner)    ║
+║                                                                              ║
+║  .github/workflows/retrain.yml                                               ║
+║  ├─ git clone → fetch latest model artifacts from repo                       ║
+║  ├─ python src/training/retrain.py                                           ║
+║  │   ├─ Download fresh BTC-USD history                                       ║
+║  │   ├─ Run current model on last 30 days → recent MAE                       ║
+║  │   ├─ Drift check: recent_MAE > 1.5 × baseline_RMSE ?                     ║
+║  │   │                                                                       ║
+║  │   ├─ NO DRIFT → skip retrain                                              ║
+║  │   │   └─ write drift_report.json (retrained: false)                       ║
+║  │   │                                                                       ║
+║  │   └─ DRIFT (or --force) → retrain RF on full history                      ║
+║  │       ├─ overwrite rf_model.save / scaler_*.pkl                           ║
+║  │       ├─ update selection.json (new RMSE)                                 ║
+║  │       ├─ write drift_report.json (retrained: true, new_rmse: ...)         ║
+║  │       ├─ docker build → new image with updated model baked in             ║
+║  │       ├─ docker push → Docker Hub                                         ║
+║  │       └─ SSH → OCI VM: docker pull + stop + rm + run                      ║
+║  │                                                                           ║
+║  └─ Always: scp drift_report.json → OCI VM → docker cp → container          ║
+║      └─ dashboard /drift-report endpoint always shows latest metrics         ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+```
+
+### Why GitHub Actions for retraining (not the OCI VM)?
+
+| Concern | GitHub Actions | OCI VM |
+|---------|---------------|--------|
+| CPU | 2-core x86, dedicated per job | 4-core ARM, shared with live API |
+| Isolation | Ephemeral — crash can't affect serving | Retrain crash = API crash |
+| Cost | Free (2,000 min/month included) | Free — but steals resources from API |
+| Rollback | Bad model = revert git commit | Bad model = manual SSH fix |
+| Secrets | Managed by GHA (Docker Hub, SSH key) | Would need separate secret management |
+
+The OCI VM is kept lean — it only runs the pre-built Docker image and serves predictions. All heavy computation stays in the ephemeral GHA runner.
+
+See [`docs/retrain.md`](docs/retrain.md) for a full walkthrough of the retraining logic and [`notebooks/04-retrain-pipeline.ipynb`](notebooks/04-retrain-pipeline.ipynb) for an interactive version.
+
+---
+
 ## ML Pipeline
 
 | Step | Description |
