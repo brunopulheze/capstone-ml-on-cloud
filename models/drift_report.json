@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-05-09T06:53:43.377314",
+  "timestamp": "2026-05-10T07:05:39.609352",
   "eval_days": 30,
-  "recent_mae": 1320.03,
+  "recent_mae": 1272.94,
   "baseline_rmse": 1910.71,
   "drift_threshold": 2866.07,
   "drift_detected": false,
