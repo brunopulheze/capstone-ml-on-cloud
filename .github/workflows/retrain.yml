@@ -1,8 +1,8 @@
 name: Daily BTC Drift Check & Retrain
 
 on:
-  schedule:
-    - cron: '0 6 * * *'   # 06:00 UTC every day
+  # schedule disabled — OCI VM decommissioned after capstone delivery
+  # - cron: '0 6 * * *'
   workflow_dispatch:
     inputs:
       force_retrain:
