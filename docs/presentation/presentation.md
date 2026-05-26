@@ -28,6 +28,28 @@ Bruno Pulheze · April 2026
 
 ---
 
+## Slide 0 — What is Bitcoin?
+
+**Bitcoin (BTC)** is a decentralised digital currency — no bank, no government, no single point of control.
+
+| | |
+|---|---|
+| Created | 2009 by the pseudonymous **Satoshi Nakamoto** |
+| Supply cap | **21 million BTC** — hardcoded, cannot be changed |
+| How it works | Transactions recorded on a public ledger: the **blockchain** |
+| How new BTC is created | **Mining** — computers compete to solve cryptographic puzzles |
+| Why people care | Store of value, global transfers without intermediaries, speculative asset |
+
+### Why is the price so volatile?
+- Small market relative to gold or equities → large orders move the price
+- Sentiment-driven (news, regulation, influencers)
+- No intrinsic cashflow to anchor valuation to
+
+> Bitcoin went from **$0.01** in 2009 to an all-time high above **$100,000** in 2024.
+> That volatility is exactly what makes price prediction both hard and interesting.
+
+---
+
 ## Slide 1 — What We Built
 
 **Goal:** Predict the next-day Bitcoin closing price and serve it as a live API.
@@ -133,21 +155,42 @@ Result written to `models/selection.json` — the single source of truth for the
 > `selection.json` decouples training from serving: the API loads whatever model
 > is recorded there without any code change.
 
+```mermaid
+flowchart TD
+    A[Train RF · XGBoost · GRU
+on full training set] --> B[Holdout evaluation
+70/30 split · log-return RMSE]
+    B --> C[Walk-forward CV
+200 steps · trees refit every 7]
+    C --> D{Best walk-forward\nlog-return RMSE?}
+    D -->|RF wins| E[model_type: rf]
+    D -->|XGBoost wins| F[model_type: xgboost]
+    D -->|GRU wins| G[model_type: gru]
+    E --> H[Write models/selection.json]
+    F --> H
+    G --> H
+    H --> I[API reads selection.json\nat startup — no code change]
+```
+
 ---
 
 ## Slide 5 — Automated Retraining & Drift Monitoring
 
 ### Daily GitHub Actions cron (`06:00 UTC`)
 
-```
-1. Download BTC-USD history (yfinance)
-2. Build feature matrix — same 25 features as training
-3. Load existing RF model + scalers
-4. Evaluate on last 30 days  →  recent MAE
-5. Drift check: recent MAE > 1.5 × baseline RMSE?
-   └─ YES → retrain from scratch, save new artifacts
-   └─ NO  → log "no drift", exit
-6. Write models/drift_report.json  →  dashboard reads this live
+```mermaid
+flowchart LR
+    A([⏰ GitHub Actions\n06:00 UTC daily]) --> B[Download BTC-USD\nyfinance]
+    B --> C[Build 25-feature\nmatrix]
+    C --> D[Load rf_model.pkl\n+ scalers]
+    D --> E[Evaluate last 30 days\n→ recent MAE]
+    E --> F{recent MAE >\n1.5 × baseline?}
+    F -->|No drift| G[drift_detected: false]
+    F -->|Drift| H[Retrain RF\nfrom scratch]
+    H --> I[Save rf_model.pkl\n+ scalers]
+    I --> J[drift_detected: true]
+    G --> K([API /drift-report])
+    J --> K
 ```
 
 ### Drift report (visible on dashboard)
@@ -173,37 +216,71 @@ python src/training/retrain.py --force
 
 ## Slide 6 — Deployment: Docker → Oracle Cloud → Vercel
 
-### Container (`Dockerfile`)
+```mermaid
+flowchart LR
+    subgraph LOCAL["💻 Local / GitHub Actions"]
+        A[Train RF model] --> B[Build Docker image]
+        B --> C[Push to Docker Hub]
+    end
 
-```
-FROM python:3.11-slim
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY src/ ./src/
-COPY models/ ./models/       ← RF artifacts baked in at build time
-CMD ["uvicorn", "src.api.app:app", "--host", "0.0.0.0", "--port", "8080"]
-```
+    subgraph OCI["☁️ Oracle Cloud VM"]
+        D[docker pull] --> E[Run container\nport 8080]
+        E --> F[FastAPI\n/predict/latest\n/history\n/drift-report]
+    end
 
-```bash
-docker build -t brunopulheze/btc-predictor:latest .
-docker push brunopulheze/btc-predictor:latest
+    subgraph VERCEL["🌐 Vercel"]
+        G[Next.js 15\nServer Component] --> H[Dashboard\nLive prediction\nPrice chart\nDrift status]
+    end
+
+    C --> D
+    F -->|"JSON"| G
+    I[yfinance\nBTC-USD data] --> F
+    J[CoinGecko\n60-day prices] --> G
 ```
 
 ### Oracle Cloud Infrastructure — Always Free tier
 
 - **Instance:** `VM.Standard.A1.Flex` — ARM Ampere, 1 OCPU, 6 GB RAM, permanently free
 - **Live API:** `http://138.2.180.250:8080`
-- Endpoints: `GET /`, `GET /health`, `GET /predict/latest`, `POST /predict`
-
-### Smoke test (contract test before every deploy)
-
-```bash
-python tests/smoke_test.py --url http://138.2.180.250:8080
-# checks: GET / → model=RF · POST /predict → predicted_price is float > 0
-```
+- Endpoints: `GET /`, `GET /health`, `GET /predict/latest`, `POST /predict`, `GET /history`
 
 ### Vercel dashboard
 
 - **Next.js 15** App Router — server component fetches API + CoinGecko in parallel
 - **ISR** (revalidate = 1800 s) — fresh data every 30 min without full rebuild
-- Displays: 60-day price chart · next-day prediction · drift monitoring card · model metadata
+- Displays: 60-day / full history chart · next-day prediction · drift monitoring card · model metadata
+
+---
+
+## Slide 7 — Conclusion
+
+### What this project demonstrates
+
+| Principle | In practice |
+|---|---|
+| Honest evaluation | Log-return space · walk-forward CV exposed GRU's false advantage |
+| Experiment tracking | MLflow — every run logged, model selection reproducible |
+| Clean serving layer | `selection.json` decouples model from code — zero-change swap |
+| Containerization | Docker — same environment locally, in CI, and on the cloud |
+| Automated operations | Daily drift detection + conditional retraining, no human needed |
+| Live product | Oracle Cloud API + Vercel dashboard — both publicly accessible |
+
+### Key takeaway
+
+Evaluation protocol matters as much as model choice — walk-forward CV and log-return space revealed the true winner.
+
+### Next steps
+
+- **Richer features** — on-chain metrics (active addresses, miner fees), sentiment from news/social, macro indicators (DXY, S&P 500 correlation)
+- **Better model** — LightGBM with Bayesian hyperparameter search; Temporal Fusion Transformer for multi-horizon forecasting
+- **HTTPS + auth** — TLS certificate via Let's Encrypt; API key protection
+- **Full CD pipeline** — auto-rebuild Docker image and redeploy VM after every successful retrain
+- **Alerting** — Slack/email notification when drift is detected or prediction error spikes
+
+### Links
+
+- **Live API:** `http://138.2.180.250:8080/predict/latest`
+- **Dashboard:** [Vercel deployment]
+- **Code:** `github.com/brunopulheze/capstone-ml-on-cloud`
+
+
