@@ -4,8 +4,6 @@
 
 End-to-end machine learning project that predicts daily **Bitcoin/USD (BTC-USD)** closing prices using a **Random Forest** model trained on log-returns. Experiment tracking is handled by MLflow. The model is served as a REST API, containerised with Docker, and deployed on **Oracle Cloud Infrastructure**.
 
-**Live API**: http://138.2.180.250:8080
-
 ```
 GET  /health          → {"status": "healthy"}
 GET  /                → {"status": "ok", "model": "rf"}
@@ -225,9 +223,6 @@ docker run --rm -p 8081:8080 -v "${PWD}/models:/app/models" btc-predictor:latest
 ```powershell
 # Against local Docker container (port 8081)
 python tests/smoke_test.py --port 8081
-
-# Against the live Oracle Cloud deployment
-python tests/smoke_test.py --url http://138.2.180.250:8080
 ```
 
 ---
